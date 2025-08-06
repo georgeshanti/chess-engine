@@ -189,6 +189,7 @@ func main() {
 		if !ok {
 			nextPositionEvaluation := *(nextPosition.board.GetEvaluation())
 			positionEvaluations[nextPosition.board] = nextPositionEvaluation
+			fmt.Printf("Next position evaluation length: %d\n", len(nextPositionEvaluation.NextMoves))
 			for _, move := range nextPositionEvaluation.NextMoves {
 				positionsToEvaluate = append(positionsToEvaluate, positionItem{board: move, depth: nextPosition.depth + 1})
 			}
@@ -228,12 +229,12 @@ func main1() {
 		}
 		fmt.Printf("Current source piece is white: %t\n", internal.GetColor(currentSourcePiece) == internal.White)
 		fmt.Printf("Current source piece is black: %t\n", internal.GetColor(currentSourcePiece) == internal.Black)
-		if internal.GetColor(currentSourcePiece) != currentPosition.NextTurn {
+		if internal.GetColor(currentSourcePiece) != internal.White {
 			fmt.Println("Invalid move. Wrong color at source position.")
 			continue
 		}
 		if internal.GetPresence(currentTargetPiece) == internal.Present &&
-			internal.GetColor(currentTargetPiece) == currentPosition.NextTurn {
+			internal.GetColor(currentTargetPiece) == internal.White {
 			fmt.Println("Invalid move. Own piece at target position.")
 			continue
 		}
@@ -244,7 +245,7 @@ func main1() {
 			nextMoveTargetPiece := possibleMove.Get(toRank, toFile)
 			if internal.GetPresence(nextMoveSourcePiece) == internal.Present ||
 				internal.GetPresence(nextMoveTargetPiece) == internal.Empty ||
-				internal.GetColor(nextMoveTargetPiece) != currentPosition.NextTurn {
+				internal.GetColor(nextMoveTargetPiece) != internal.White {
 				continue
 			}
 			foundNextMove = true

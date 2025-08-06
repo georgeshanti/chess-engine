@@ -1,7 +1,6 @@
 package internal
 
 var InitialBoard = Board{
-	NextTurn: White,
 	Pieces: [64]byte{
 		Present | Black | Rook,
 		Present | Black | Knight,
@@ -78,7 +77,6 @@ var InitialBoard = Board{
 }
 
 var InitialBoard2 = Board{
-	NextTurn: White,
 	Pieces: [64]byte{
 		Present | Black | Rook,
 		Present | Black | Knight,
