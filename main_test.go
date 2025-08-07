@@ -1,9 +1,11 @@
 package main
 
 import (
+	"testing"
+
 	"github.com/georgeshanti/chess-engine/internal/man"
 )
 
-func main() {
+func Test(t *testing.T) {
 	man.Main()
 }
