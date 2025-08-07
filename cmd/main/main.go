@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"regexp"
 	"slices"
 	"sync"
@@ -175,26 +176,87 @@ type positionItem struct {
 	depth int
 }
 
+type LinkedListOfListsNode[T any] struct {
+	value []T
+	next  *LinkedListOfListsNode[T]
+}
+
+type LinkedListOfLists[T any] struct {
+	head *LinkedListOfListsNode[T]
+	tail *LinkedListOfListsNode[T]
+}
+
+func (list *LinkedListOfLists[T]) AddList(value []T) {
+	if list.head == nil && list.tail == nil {
+		// fmt.Printf("Adding list to empty list\n")
+		node := &LinkedListOfListsNode[T]{
+			value: value,
+			next:  nil,
+		}
+		list.head = node
+		list.tail = node
+	} else {
+		// fmt.Printf("Adding list to non-empty list\n")
+		node := &LinkedListOfListsNode[T]{
+			value: value,
+			next:  nil,
+		}
+		list.tail.next = node
+		list.tail = node
+	}
+}
+
+func (list *LinkedListOfLists[T]) Dequeue() T {
+	if list.head == nil {
+		panic("Empty list")
+	} else if len(list.head.value) > 0 {
+		node := list.head.value[0]
+		if len(list.head.value) > 1 {
+			list.head.value = list.head.value[1:]
+		} else {
+			list.head = list.head.next
+			if list.head == nil {
+				list.tail = nil
+			}
+		}
+		return node
+	} else {
+		panic("Empty list")
+	}
+}
+
+func (list *LinkedListOfLists[T]) IsEmpty() bool {
+	// fmt.Printf("Checking if list is empty: %t\n", list.head == nil)
+	return list.head == nil || len(list.head.value) == 0
+}
+
 func main() {
 	var positionEvaluations = make(map[internal.Board]internal.BoardState)
-	var positionsToEvaluate []positionItem
-	positionsToEvaluate = append(positionsToEvaluate, positionItem{board: internal.InitialBoard, depth: 0})
-	for len(positionsToEvaluate) > 0 {
-		nextPosition := positionsToEvaluate[0]
+	positionsToEvaluate := &LinkedListOfLists[positionItem]{}
+	positionsToEvaluate.AddList([]positionItem{{board: internal.InitialBoard, depth: 0}})
+	go func() {
+		time.Sleep(10 * time.Second)
+		fmt.Printf("Exiting\n")
+		fmt.Printf("Positions evaluated: %d, highest depth: %d\n", len(positionEvaluations), highestDepth)
+		os.Exit(0)
+	}()
+	for !positionsToEvaluate.IsEmpty() {
+		nextPosition := positionsToEvaluate.Dequeue()
 		if nextPosition.depth > highestDepth {
 			highestDepth = nextPosition.depth
 		}
-		fmt.Printf("Positions evaluated: %d, Current depth: %d, highest depth: %d\n", len(positionEvaluations), nextPosition.depth, highestDepth)
+		// fmt.Printf("Positions evaluated: %d, Current depth: %d, highest depth: %d\n", len(positionEvaluations), nextPosition.depth, highestDepth)
 		_, ok := positionEvaluations[nextPosition.board]
 		if !ok {
 			nextPositionEvaluation := *(nextPosition.board.GetEvaluation())
 			positionEvaluations[nextPosition.board] = nextPositionEvaluation
-			fmt.Printf("Next position evaluation length: %d\n", len(nextPositionEvaluation.NextMoves))
-			for _, move := range nextPositionEvaluation.NextMoves {
-				positionsToEvaluate = append(positionsToEvaluate, positionItem{board: move, depth: nextPosition.depth + 1})
+			// fmt.Printf("Next position evaluation length: %d\n", len(nextPositionEvaluation.NextMoves))
+			positions := make([]positionItem, len(nextPositionEvaluation.NextMoves))
+			for i, move := range nextPositionEvaluation.NextMoves {
+				positions[i] = positionItem{board: move, depth: nextPosition.depth + 1}
 			}
+			positionsToEvaluate.AddList(positions)
 		}
-		positionsToEvaluate = positionsToEvaluate[1:]
 	}
 }
 
