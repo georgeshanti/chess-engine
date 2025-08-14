@@ -1,4 +1,4 @@
-package internal
+package man
 
 import (
 	"sync"
@@ -10,6 +10,8 @@ type LinkedListOfListsNode[T any] struct {
 }
 
 type LinkedListOfLists[T any] struct {
+	value []T
+
 	headLock *sync.Mutex
 	head     *LinkedListOfListsNode[T]
 
@@ -22,6 +24,7 @@ type LinkedListOfLists[T any] struct {
 
 func NewLinkedListOfLists[T any]() *LinkedListOfLists[T] {
 	return &LinkedListOfLists[T]{
+		value:              []T{},
 		headLock:           &sync.Mutex{},
 		tailLock:           &sync.Mutex{},
 		dequeueWaitersLock: &sync.Mutex{},
@@ -30,11 +33,18 @@ func NewLinkedListOfLists[T any]() *LinkedListOfLists[T] {
 }
 
 func (list *LinkedListOfLists[T]) AddList(value []T) {
+	// list.headLock.Lock()
+	// list.value = append(list.value, value...)
+	// list.headLock.Unlock()
+	// return
+
+	if len(value) == 0 {
+		return
+	}
+
 	list.tailLock.Lock()
-	defer list.tailLock.Unlock()
 	if list.tail == nil {
 		list.headLock.Lock()
-		defer list.headLock.Unlock()
 		node := &LinkedListOfListsNode[T]{
 			value: value,
 			next:  nil,
@@ -47,6 +57,7 @@ func (list *LinkedListOfLists[T]) AddList(value []T) {
 		}
 		list.dequeueWaiters = []chan int{}
 		list.dequeueWaitersLock.Unlock()
+		list.headLock.Unlock()
 	} else {
 		// fmt.Printf("Adding list to non-empty list\n")
 		node := &LinkedListOfListsNode[T]{
@@ -56,32 +67,47 @@ func (list *LinkedListOfLists[T]) AddList(value []T) {
 		list.tail.next = node
 		list.tail = node
 	}
+	list.tailLock.Unlock()
+}
+
+func slice[T any](list []T) []T {
+	return list[1:]
 }
 
 func (list *LinkedListOfLists[T]) Dequeue() T {
+
+	// list.headLock.Lock()
+	// var node T
+	// if len(list.value) > 0 {
+	// 	node = list.value[0]
+	// 	list.value = list.value[1:]
+	// }
+	// list.headLock.Unlock()
+	// return node
+
 	list.headLock.Lock()
-	defer list.headLock.Unlock()
 	for list.head == nil {
 		list.headLock.Unlock()
 		list.dequeueWaitersLock.Lock()
 		channel := make(chan int)
 		list.dequeueWaiters = append(list.dequeueWaiters, channel)
 		list.dequeueWaitersLock.Unlock()
-		<-list.dequeueWaiters[len(list.dequeueWaiters)-1]
+		<-channel
 		list.headLock.Lock()
 	}
 	if len(list.head.value) > 0 {
 		node := list.head.value[0]
 		if len(list.head.value) > 1 {
-			list.head.value = list.head.value[1:]
+			list.head.value = slice(list.head.value)
 		} else {
 			list.tailLock.Lock()
-			defer list.tailLock.Unlock()
 			list.head = list.head.next
 			if list.head == nil {
 				list.tail = nil
 			}
+			list.tailLock.Unlock()
 		}
+		list.headLock.Unlock()
 		return node
 	} else {
 		panic("Empty list")

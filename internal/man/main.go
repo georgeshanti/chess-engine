@@ -2,6 +2,7 @@ package man
 
 import (
 	"fmt"
+	"os"
 	"regexp"
 	"runtime"
 	"slices"
@@ -13,7 +14,7 @@ import (
 
 var currentPosition internal.Board
 
-var positionsMutex = new(sync.Mutex)
+var positionsMutex = new(sync.RWMutex)
 var positions = map[internal.Board]*internal.BoardState{}
 
 var highestDepth int = 0
@@ -29,60 +30,101 @@ type positionItem struct {
 	depth  int
 }
 
-var positionsToEvaluate = internal.NewLinkedListOfLists[positionItem]()
+var positionsToEvaluate = NewLinkedListOfLists[positionItem]()
 var mutex = new(sync.Mutex)
-var iterations = make(map[int]int)
+var duplications = 0
+
+var iterations = make(map[int]*struct {
+	value int
+	lock  *sync.Mutex
+})
 var start = time.Now()
 
 func evaluationEngine(i int) {
 	fmt.Printf("Evaluation engine %d started\n", i)
+	var index = 0
 	for time.Since(start) < 10*time.Second {
 		nextPosition := positionsToEvaluate.Dequeue()
-		mutex.Lock()
-		iterations[i]++
-		mutex.Unlock()
-		positionsMutex.Lock()
-		boardState, ok := positions[nextPosition.board]
-		if nextPosition.depth > highestDepth {
-			highestDepth = nextPosition.depth
-		}
-		if ok {
-			boardState.Mutex.Lock()
-			positionsMutex.Unlock()
-
-			if !slices.Contains(boardState.PreviousMoves, nextPosition.parent) {
-				boardState.PreviousMoves = append(boardState.PreviousMoves, nextPosition.parent)
-			}
-			boardState.Mutex.Unlock()
-		} else {
-			newBoardState := &internal.BoardState{
-				Mutex: new(sync.Mutex),
-			}
-			positions[nextPosition.board] = newBoardState
-			positionsMutex.Unlock()
-
-			evaluatedBoardState := nextPosition.board.GetEvaluation()
-			newBoardState.SelfEvaluation = evaluatedBoardState.SelfEvaluation
-			newBoardState.NextMoves = evaluatedBoardState.NextMoves
-			newBoardState.NextBestMove = evaluatedBoardState.NextBestMove
-			newBoardState.AllMoves = evaluatedBoardState.AllMoves
-
-			newBoardState.Mutex.Lock()
-			newBoardState.PreviousMoves = append(newBoardState.PreviousMoves, nextPosition.parent)
-			newBoardState.Mutex.Unlock()
-
-			nextPositions := make([]positionItem, len(newBoardState.NextMoves))
-			for i, move := range evaluatedBoardState.NextMoves {
-				nextPositions[i] = positionItem{parent: nextPosition.board, board: move, depth: nextPosition.depth + 1}
-			}
-			positionsToEvaluate.AddList(nextPositions)
-		}
+		iterations[i].lock.Lock()
+		iterations[i].value++
+		iterations[i].lock.Unlock()
+		evaluate(nextPosition, false, fmt.Sprintf("%d:%d", i, index))
+		index++
 	}
 	fmt.Printf("Evaluation engine %d finished\n", i)
 	wg.Add(-1)
 }
 
-func Main() {
+func evaluate(nextPosition positionItem, spawnRoutines bool, index string) {
+	positionsMutex.RLock()
+	boardState, ok := positions[nextPosition.board]
+	if nextPosition.depth > highestDepth {
+		highestDepth = nextPosition.depth
+	}
+	if ok {
+		boardState.Mutex.Lock()
+		positionsMutex.RUnlock()
+
+		if !slices.Contains(boardState.PreviousMoves, nextPosition.parent) {
+			boardState.PreviousMoves = append(boardState.PreviousMoves, nextPosition.parent)
+		}
+		boardState.Mutex.Unlock()
+		mutex.Lock()
+		duplications++
+		mutex.Unlock()
+	} else {
+		positionsMutex.RUnlock()
+		positionsMutex.Lock()
+		newBoardState := &internal.BoardState{
+			Mutex: new(sync.Mutex),
+		}
+		positions[nextPosition.board] = newBoardState
+		positionsMutex.Unlock()
+
+		// fmt.Printf("Started evaluation of position %s\n", index)
+		evaluatedBoardState := nextPosition.board.GetEvaluation()
+		// fmt.Printf("Stopped evaluation of position %s\n", index)
+		newBoardState.SelfEvaluation = evaluatedBoardState.SelfEvaluation
+		newBoardState.NextMoves = evaluatedBoardState.NextMoves
+		newBoardState.NextBestMove = evaluatedBoardState.NextBestMove
+		newBoardState.AllMoves = evaluatedBoardState.AllMoves
+
+		newBoardState.Mutex.Lock()
+		newBoardState.PreviousMoves = append(newBoardState.PreviousMoves, nextPosition.parent)
+		newBoardState.Mutex.Unlock()
+
+		if !spawnRoutines {
+			nextPositions := make([]positionItem, len(newBoardState.NextMoves))
+			for i, move := range evaluatedBoardState.NextMoves {
+				nextPositions[i] = positionItem{parent: nextPosition.board, board: move, depth: nextPosition.depth + 1}
+			}
+			if len(nextPositions) > 0 {
+				positionsToEvaluate.AddList(nextPositions)
+			} else {
+				fmt.Printf("No next positions: %d\n", len(positions))
+			}
+		} else {
+			for _, move := range evaluatedBoardState.NextMoves {
+				go evaluate(positionItem{parent: nextPosition.board, board: move, depth: nextPosition.depth + 1}, true, "")
+			}
+		}
+	}
+}
+
+func runWithGoroutines() {
+	go func() {
+		time.Sleep(10 * time.Second)
+		fmt.Printf("Exiting\n")
+		fmt.Printf("Positions evaluated: %d, highest depth: %d, iterations: %d\n", len(positions), highestDepth, iterations)
+		fmt.Printf("Goroutines: %d\n", runtime.NumGoroutine())
+		os.Exit(0)
+	}()
+	go evaluate(positionItem{board: internal.InitialBoard, depth: 0}, true, "")
+	channel := make(chan int)
+	<-channel
+}
+
+func runWithEvaluationEngines() {
 	positionsToEvaluate.AddList([]positionItem{{board: internal.InitialBoard, depth: 0}})
 	// go func() {
 	// 	time.Sleep(10 * time.Second)
@@ -92,20 +134,36 @@ func Main() {
 	// 	os.Exit(0)
 	// }()
 	cpuCount := runtime.NumCPU() - 1
-	cpuCount = cpuCount * 2
+	// cpuCount = 1
 	for i := 0; i < cpuCount; i++ {
 		fmt.Printf("Starting evaluation engine %d\n", i)
 		wg.Add(1)
-		iterations[i] = 0
+		iterations[i] = &struct {
+			value int
+			lock  *sync.Mutex
+		}{
+			value: 0,
+			lock:  new(sync.Mutex),
+		}
 		go evaluationEngine(i)
 	}
 	wg.Wait()
 	fmt.Printf("Evaluation engines finished\n")
 	fmt.Printf("Exiting\n")
-	fmt.Printf("Positions evaluated: %d, highest depth: %d, iterations: %d\n", len(positions), highestDepth, iterations)
+	iterationsMap := make(map[int]int)
+	for k, v := range iterations {
+		iterationsMap[k] = v.value
+	}
+	fmt.Printf("Positions evaluated: %d, highest depth: %d, iterations: %v\n", len(positions), highestDepth, iterationsMap)
+	fmt.Printf("Duplications: %d\n", duplications)
 	fmt.Printf("Goroutines: %d\n", runtime.NumGoroutine())
 
 	// evaluationEngine(0)
+}
+
+func Main() {
+	// runWithGoroutines()
+	runWithEvaluationEngines()
 }
 
 // func main1() {

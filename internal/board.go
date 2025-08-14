@@ -62,38 +62,32 @@ func (b *Board) String() string {
 	return fmt.Sprintf("Next turn: %s\n%s\n%s", top, strings.Join(rows, fmt.Sprintf("\n%s\n", between)), bottom)
 }
 
+const direction int = -1
+const seventhRank int = 1
+const secondRank int = 6
+
 func (b *Board) FindMoves() []Board {
-	moves := []Board{}
-	for rank := range squareLengthArray {
-		for file := range squareLengthArray {
+	moves := &List[Board]{}
+	pieceCount := 0
+	for _rank := range squareLengthArray {
+		for _file := range squareLengthArray {
+			rank := 7 - _rank
+			file := 7 - _file
 			piece := b.Get(rank, file)
+			if pieceCount >= 16 {
+				break
+			}
 			if GetColor(piece) != White {
 				continue
 			}
+			pieceCount++
 			switch GetType(piece) {
 			case Pawn:
 				{
-					var direction int
-					switch GetColor(piece) {
-					case White:
-						direction = -1
-					case Black:
-						direction = 1
-					}
 					if rank+direction < 0 || rank+direction > 7 {
 						continue
 					}
 					if GetPresence(b.Get(rank+direction, file)) == Empty {
-						var seventhRank int
-						var secondRank int
-						switch GetColor(piece) {
-						case White:
-							seventhRank = 1
-							secondRank = 6
-						case Black:
-							seventhRank = 6
-							secondRank = 1
-						}
 						if rank == seventhRank {
 							for _, majorPiece := range MajorPieces {
 								newPiece := Present | White | majorPiece
@@ -105,19 +99,19 @@ func (b *Board) FindMoves() []Board {
 								newBoard.Set(7-rank, 7-file, Empty)
 								newBoard.Set(7-rank+direction, 7-file, newPiece)
 
-								moves = append(moves, newBoard)
+								moves.Add(newBoard)
 							}
 						} else {
 							newBoard := b.DuplicateForNextMove()
 							newBoard.Set(7-rank, 7-file, Empty)
 							newBoard.Set(7-rank+direction, 7-file, piece)
 
-							moves = append(moves, newBoard)
+							moves.Add(newBoard)
 							if rank == secondRank && GetPresence(b.Get(rank+(direction*2), file)) == Empty {
 								newDoubleBoard := b.DuplicateForNextMove()
 								newDoubleBoard.Set(7-rank, 7-file, Empty)
 								newDoubleBoard.Set(7-(rank+(direction*2)), 7-file, piece|HasMovedTwoSquares)
-								moves = append(moves, newDoubleBoard)
+								moves.Add(newDoubleBoard)
 							}
 						}
 					}
@@ -125,13 +119,13 @@ func (b *Board) FindMoves() []Board {
 						newBoard := b.DuplicateForNextMove()
 						newBoard.Set(7-rank, 7-file, Empty)
 						newBoard.Set(7-(rank+direction), 7-(file-1), piece)
-						moves = append(moves, newBoard)
+						moves.Add(newBoard)
 					}
 					if file < 7 && GetPresence(b.Get(rank+direction, file+1)) == Present && GetColor(b.Get(rank+direction, file+1)) != White {
 						newBoard := b.DuplicateForNextMove()
 						newBoard.Set(7-rank, 7-file, Empty)
 						newBoard.Set(7-(rank+direction), 7-(file+1), piece)
-						moves = append(moves, newBoard)
+						moves.Add(newBoard)
 					}
 				}
 			case Rook:
@@ -149,7 +143,7 @@ func (b *Board) FindMoves() []Board {
 								newBoard := b.DuplicateForNextMove()
 								newBoard.Set(7-rank, 7-file, Empty)
 								newBoard.Set(7-(rank-i), 7-file, Present|White|Rook|HasMoved)
-								moves = append(moves, newBoard)
+								moves.Add(newBoard)
 							}
 						}
 						if canMoveDownward && rank+i <= 7 {
@@ -160,7 +154,7 @@ func (b *Board) FindMoves() []Board {
 								newBoard := b.DuplicateForNextMove()
 								newBoard.Set(7-rank, 7-file, Empty)
 								newBoard.Set(7-(rank+i), 7-file, Present|White|Rook|HasMoved)
-								moves = append(moves, newBoard)
+								moves.Add(newBoard)
 							}
 						}
 						if canMoveLeft && file-i >= 0 {
@@ -171,7 +165,7 @@ func (b *Board) FindMoves() []Board {
 								newBoard := b.DuplicateForNextMove()
 								newBoard.Set(7-rank, 7-file, Empty)
 								newBoard.Set(7-rank, 7-(file-i), Present|White|Rook|HasMoved)
-								moves = append(moves, newBoard)
+								moves.Add(newBoard)
 							}
 						}
 						if canMoveRight && file+i <= 7 {
@@ -182,7 +176,7 @@ func (b *Board) FindMoves() []Board {
 								newBoard := b.DuplicateForNextMove()
 								newBoard.Set(7-rank, 7-file, Empty)
 								newBoard.Set(7-rank, 7-(file+i), Present|White|Rook|HasMoved)
-								moves = append(moves, newBoard)
+								moves.Add(newBoard)
 							}
 						}
 					}
@@ -206,7 +200,7 @@ func (b *Board) FindMoves() []Board {
 							newBoard := b.DuplicateForNextMove()
 							newBoard.Set(7-rank, 7-file, Empty)
 							newBoard.Set(7-(rank+offset.i), 7-(file+offset.j), Present|White|Knight)
-							moves = append(moves, newBoard)
+							moves.Add(newBoard)
 						}
 					}
 				}
@@ -225,7 +219,7 @@ func (b *Board) FindMoves() []Board {
 								newBoard := b.DuplicateForNextMove()
 								newBoard.Set(7-rank, 7-file, Empty)
 								newBoard.Set(7-(rank-i), 7-(file+i), Present|White|Bishop)
-								moves = append(moves, newBoard)
+								moves.Add(newBoard)
 							}
 						}
 						if canMoveDownRight && rank+i <= 7 && file+i <= 7 {
@@ -236,7 +230,7 @@ func (b *Board) FindMoves() []Board {
 								newBoard := b.DuplicateForNextMove()
 								newBoard.Set(7-rank, 7-file, Empty)
 								newBoard.Set(7-(rank+i), 7-(file+i), Present|White|Bishop)
-								moves = append(moves, newBoard)
+								moves.Add(newBoard)
 							}
 						}
 						if canMoveDownLeft && rank+i <= 7 && file-i >= 0 {
@@ -247,7 +241,7 @@ func (b *Board) FindMoves() []Board {
 								newBoard := b.DuplicateForNextMove()
 								newBoard.Set(7-rank, 7-file, Empty)
 								newBoard.Set(7-(rank+i), 7-(file-i), Present|White|Bishop)
-								moves = append(moves, newBoard)
+								moves.Add(newBoard)
 							}
 						}
 						if canMoveUpLeft && rank-i >= 0 && file-i >= 0 {
@@ -258,7 +252,7 @@ func (b *Board) FindMoves() []Board {
 								newBoard := b.DuplicateForNextMove()
 								newBoard.Set(7-rank, 7-file, Empty)
 								newBoard.Set(7-(rank-i), 7-(file-i), Present|White|Bishop)
-								moves = append(moves, newBoard)
+								moves.Add(newBoard)
 							}
 						}
 					}
@@ -282,7 +276,7 @@ func (b *Board) FindMoves() []Board {
 							newBoard := b.DuplicateForNextMove()
 							newBoard.Set(7-rank, 7-file, Empty)
 							newBoard.Set(7-(rank+offset.i), 7-(file+offset.j), Present|White|King|HasMoved)
-							moves = append(moves, newBoard)
+							moves.Add(newBoard)
 						}
 					}
 				}
@@ -309,7 +303,7 @@ func (b *Board) FindMoves() []Board {
 								newBoard := b.DuplicateForNextMove()
 								newBoard.Set(7-rank, 7-file, Empty)
 								newBoard.Set(7-(rank-i), 7-(file+i), Present|White|Queen)
-								moves = append(moves, newBoard)
+								moves.Add(newBoard)
 							}
 						}
 						if canMoveDownRight && rank+i <= 7 && file+i <= 7 {
@@ -320,7 +314,7 @@ func (b *Board) FindMoves() []Board {
 								newBoard := b.DuplicateForNextMove()
 								newBoard.Set(7-rank, 7-file, Empty)
 								newBoard.Set(7-(rank+i), 7-(file+i), Present|White|Queen)
-								moves = append(moves, newBoard)
+								moves.Add(newBoard)
 							}
 						}
 						if canMoveDownLeft && rank+i <= 7 && file-i >= 0 {
@@ -331,7 +325,7 @@ func (b *Board) FindMoves() []Board {
 								newBoard := b.DuplicateForNextMove()
 								newBoard.Set(7-rank, 7-file, Empty)
 								newBoard.Set(7-(rank+i), 7-(file-i), Present|White|Queen)
-								moves = append(moves, newBoard)
+								moves.Add(newBoard)
 							}
 						}
 						if canMoveUpLeft && rank-i >= 0 && file-i >= 0 {
@@ -342,7 +336,7 @@ func (b *Board) FindMoves() []Board {
 								newBoard := b.DuplicateForNextMove()
 								newBoard.Set(7-rank, 7-file, Empty)
 								newBoard.Set(7-(rank-i), 7-(file-i), Present|White|Queen)
-								moves = append(moves, newBoard)
+								moves.Add(newBoard)
 							}
 						}
 
@@ -354,7 +348,7 @@ func (b *Board) FindMoves() []Board {
 								newBoard := b.DuplicateForNextMove()
 								newBoard.Set(7-rank, 7-file, Empty)
 								newBoard.Set(7-(rank-i), 7-file, Present|White|Queen)
-								moves = append(moves, newBoard)
+								moves.Add(newBoard)
 							}
 						}
 						if canMoveDownward && rank+i <= 7 {
@@ -365,7 +359,7 @@ func (b *Board) FindMoves() []Board {
 								newBoard := b.DuplicateForNextMove()
 								newBoard.Set(7-rank, 7-file, Empty)
 								newBoard.Set(7-(rank+i), 7-file, Present|White|Queen)
-								moves = append(moves, newBoard)
+								moves.Add(newBoard)
 							}
 						}
 						if canMoveLeft && file-i >= 0 {
@@ -376,7 +370,7 @@ func (b *Board) FindMoves() []Board {
 								newBoard := b.DuplicateForNextMove()
 								newBoard.Set(7-rank, 7-file, Empty)
 								newBoard.Set(7-rank, 7-(file-i), Present|White|Queen)
-								moves = append(moves, newBoard)
+								moves.Add(newBoard)
 							}
 						}
 						if canMoveRight && file+i <= 7 {
@@ -387,7 +381,7 @@ func (b *Board) FindMoves() []Board {
 								newBoard := b.DuplicateForNextMove()
 								newBoard.Set(7-rank, 7-file, Empty)
 								newBoard.Set(7-rank, 7-(file+i), Present|White|Queen)
-								moves = append(moves, newBoard)
+								moves.Add(newBoard)
 							}
 						}
 					}
@@ -395,7 +389,7 @@ func (b *Board) FindMoves() []Board {
 			}
 		}
 	}
-	return moves
+	return moves.IntoSlice()
 }
 
 func (b *Board) IsOpponentInCheck() bool {
@@ -451,7 +445,7 @@ func (b *Board) IsOpponentInCheck() bool {
 					if GetType(b.Get(rank+i, file+i)) == Bishop || GetType(b.Get(rank+i, file+i)) == Queen {
 						return true
 						// }
-					} else if i == 1 && GetType(b.Get(rank+i, file+i)) == Pawn && White == White {
+					} else if i == 1 && GetType(b.Get(rank+i, file+i)) == Pawn {
 						return true
 					}
 				}
@@ -464,7 +458,7 @@ func (b *Board) IsOpponentInCheck() bool {
 					if GetType(b.Get(rank+i, file-i)) == Bishop || GetType(b.Get(rank+i, file-i)) == Queen {
 						return true
 						// }
-					} else if i == 1 && GetType(b.Get(rank+i, file-i)) == Pawn && White == White {
+					} else if i == 1 && GetType(b.Get(rank+i, file-i)) == Pawn {
 						return true
 					}
 				}
