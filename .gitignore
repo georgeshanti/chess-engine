@@ -1,2 +1,6 @@
 lost_position.json
 winning_position.json
+
+# Added by cargo
+
+/target
