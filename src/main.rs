@@ -1,8 +1,8 @@
 mod core;
 
 use std::{cmp::Ordering, collections::{HashMap, HashSet}, io, sync::{Arc, Mutex, RwLock}, thread::JoinHandle, time::Duration};
-
 use regex::Regex;
+use crossterm::event::{Event, KeyCode};
 
 use crate::core::{board::*, board_state::*, initial_board::*, piece::*, queue::*};
 
@@ -30,6 +30,12 @@ fn evaluation_engine(_: usize, run_lock: Arc<RwLock<()>>, positions: Positions, 
         }
         // println!("Evaluation engine dequeued: {}", engine_id);
         let readable_positions = positions.read().unwrap();
+        if let Some(parent) = previous_board {
+            if readable_positions.get(&parent).is_none() {
+                println!("Parent not found: {}", parent);
+                continue;
+            }
+        }
         let board_state = readable_positions.get(&board);
         match board_state {
             None => {
@@ -192,33 +198,7 @@ fn prune_engine(run_lock: Arc<RwLock<()>>, positions: Positions, positions_to_ev
     }
     println!("Removed unreachable boards from positions");
     let mut removed_from_queue = 0;
-    {
-        let mut _head = positions_to_evaluate.head.lock().unwrap();
-        let mut head = _head.clone();
-        loop {
-            let node = {
-                let mut optional_node = head.lock().unwrap();
-                if optional_node.is_none() {
-                    break;
-                }
-                // let t = {
-                let mut i = 0;
-                let node = optional_node.as_mut().unwrap();
-                while i < node.value.len() {
-                    if let Some(board) = node.value[i].0 {
-                        if evaluated_boards.contains(&board) {
-                            node.value.remove(i);
-                            removed_from_queue += 1;
-                        } else {
-                            i += 1;
-                        }
-                    }
-                }
-                node.next.clone()
-            };
-            head = node;
-        }
-    }
+    // positions_to_evaluate.prune(&evaluated_boards);
     println!("Removed unreachable boards from queue");
     println!("Number of removed boards: {}", evaluated_boards.len());
     println!("Number of removed boards from queue: {}", removed_from_queue);

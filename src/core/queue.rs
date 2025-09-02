@@ -1,4 +1,6 @@
-use std::sync::{Arc, Condvar, Mutex};
+use std::{collections::HashSet, sync::{Arc, Condvar, Mutex}};
+
+use crate::core::board::Board;
 
 #[derive(Clone)]
 pub struct QueueNode<T> {
@@ -28,6 +30,10 @@ impl<T> Queue<T> {
 pub trait QueueTrait<T> {
     fn queue(&self, value: Vec<T>);
     fn dequeue(&self) -> T;
+}
+
+pub trait QueuePruneTrait<T> {
+    fn prune(&self, value: &HashSet<T>);
 }
 
 impl<T> QueueTrait<T> for Queue<T> {
@@ -119,5 +125,45 @@ impl<T> QueueTrait<T> for Queue<T> {
         //     println!("it took {}ns", elapsed);
         // }
         return_value
+    }
+}
+
+impl QueuePruneTrait<Board> for Queue<(Option<Board>, Board, usize)> {
+    fn prune(&self, list: &HashSet<Board>) {
+        let mut _head = self.head.lock().unwrap();
+        let mut pseudo_node = Arc::new(Mutex::new(Some(QueueNode { value: vec![], next: _head.clone() })));
+        let mut moved_to_node = false;
+        loop {
+            let node = {
+                let mut optional_node = pseudo_node.lock().unwrap();
+                if optional_node.is_none() {
+                    break;
+                }
+                // let t = {
+                let mut i = 0;
+                let node = optional_node.as_mut().unwrap();
+                while i < node.value.len() {
+                    if let Some(board) = node.value[i].0 {
+                        if list.contains(&board) {
+                            node.value.remove(i);
+                        } else {
+                            i += 1;
+                        }
+                    }
+                }
+                if !node.value.is_empty() {
+                    moved_to_node = true;
+                    (true, node.next.clone())
+                } else {
+                    (false, node.next.clone())
+                }
+            };
+            if node.0 {
+                let mut t = pseudo_node.lock().unwrap();
+                t.as_mut().unwrap().next = node.1;
+            } else {
+                pseudo_node = node.1;
+            }
+        }
     }
 }
