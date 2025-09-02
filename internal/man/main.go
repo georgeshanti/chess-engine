@@ -134,7 +134,7 @@ func runWithEvaluationEngines() {
 	// 	os.Exit(0)
 	// }()
 	cpuCount := runtime.NumCPU() - 1
-	// cpuCount = 1
+	cpuCount = 1
 	for i := 0; i < cpuCount; i++ {
 		fmt.Printf("Starting evaluation engine %d\n", i)
 		wg.Add(1)

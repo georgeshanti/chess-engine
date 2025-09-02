@@ -79,7 +79,7 @@ pub fn char(b: u8) -> String {
         KING => char += 0x0000,
         _ => panic!("Invalid piece type"),
 	}
-	return char.to_string();
+	return String::from_utf16(&[char]).unwrap();
 }
 
 pub fn get_material_value(b: u8) -> i64 {

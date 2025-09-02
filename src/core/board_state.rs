@@ -2,7 +2,7 @@ use std::{cmp::Ordering, collections::HashSet, sync::{Arc, RwLock}};
 
 use crate::core::board::*;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 pub enum PositionResult {
     Win,
     Scored,
@@ -10,6 +10,7 @@ pub enum PositionResult {
     Loss,
 }
 
+#[derive(Copy, Clone, PartialEq)]
 pub struct Evaluation {
     pub result: PositionResult,
     pub score: i32,
@@ -32,6 +33,15 @@ impl Evaluation {
             (_, PositionResult::Loss) => Ordering::Greater,
         }
     }
+
+    pub fn invert(self: &Self) -> Self {
+        match self.result {
+            PositionResult::Win => Evaluation{result: PositionResult::Loss, score: self.score+1},
+            PositionResult::Scored => Evaluation{result: PositionResult::Scored, score: -self.score},
+            PositionResult::Draw => Evaluation{result: PositionResult::Draw, score: self.score},
+            PositionResult::Loss => Evaluation{result: PositionResult::Win, score: self.score+1},
+        }
+    }
 }
 
 pub struct BoardState {
@@ -43,6 +53,7 @@ pub struct BoardState {
 	pub next_best_move: RwLock<Option<NextBestMove>>,
 }
 
+#[derive(Clone, Copy, PartialEq)]
 pub struct NextBestMove {
 	pub board: Board,
 	pub evaluation: Evaluation,

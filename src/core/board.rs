@@ -1,3 +1,5 @@
+use std::fmt::write;
+use std::fmt::Display;
 use std::sync::Arc;
 use std::sync::RwLock;
 
@@ -13,6 +15,7 @@ const ROOK_DIRECTIONS: [(i8, i8); 4] = [(1, 0), (-1, 0), (0, 1), (0, -1)];
 const KNIGHT_DIRECTIONS: [(i8, i8); 8] = [(2, 1), (2, -1), (-2, 1), (-2, -1), (1, 2), (1, -2), (-1, 2), (-1, -2)];
 const BISHOP_DIRECTIONS: [(i8, i8); 4] = [(1, 1), (-1, 1), (1, -1), (-1, -1)];
 const QUEEN_DIRECTIONS: [(i8, i8); 8] = [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (-1, 1), (1, -1), (-1, -1)];
+const PAWN_DIAGONALS: [(i8, i8); 2] = [(1, 1), (1, -1)];
 
 trait Coordinates<T> {
     fn multiply(self: &Self, multiplier: i8) -> Self;
@@ -73,6 +76,7 @@ impl Board {
         }
     }
 
+    #[inline(never)]
     pub fn find_moves(self: &Self) -> Vec<Board> {
         let mut moves = Vec::new();
         for i in 0..64 {
@@ -87,13 +91,28 @@ impl Board {
                 PAWN => {
                     if get_presence(self.get(rank+1, file)) == EMPTY {
                         let mut new_board = self.clone();
+                        new_board.set(rank, file, EMPTY);
                         new_board.set(rank+1, file, PRESENT | WHITE | PAWN | HAS_NOT_MOVED_TWO_SQUARES);
                         moves.push(new_board);
 
                         if get_presence(self.get(rank+2, file)) == EMPTY {
                             let mut new_board = self.clone();
+                            new_board.set(rank, file, EMPTY);
                             new_board.set(rank+2, file, PRESENT | WHITE | PAWN | HAS_MOVED_TWO_SQUARES);
                             moves.push(new_board);
+                        }
+                    }
+                    for diagonal in PAWN_DIAGONALS {
+                        let destination: (i8, i8) = diagonal.add((rank as i8, file as i8));
+                        if (0<=destination.0) && (destination.0<8) && 0<=destination.1 && destination.1<8 {
+                            let destination = destination.as_usize();
+                            let target_piece = self.get(destination.0, destination.1);
+                            if get_presence(target_piece) == PRESENT && get_color(target_piece) == BLACK {
+                                let mut new_board = self.clone();
+                                new_board.set(rank, file, EMPTY);
+                                new_board.set(destination.0, destination.1, PRESENT | WHITE | PAWN | HAS_NOT_MOVED_TWO_SQUARES);
+                                moves.push(new_board);
+                            }
                         }
                     }
                 },
@@ -121,13 +140,15 @@ impl Board {
                                     let piece = self.get(destination.0, destination.1);
                                     if get_presence(piece) == EMPTY {
                                         let mut new_board = self.clone();
-                                        new_board.set(destination.0, destination.1, PRESENT | WHITE | ROOK);
+                                        new_board.set(rank, file, EMPTY);
+                                        new_board.set(destination.0, destination.1, PRESENT | WHITE | get_type(source_piece));
                                         moves.push(new_board);
                                     } else {
                                         can_move_in_directions[direction_idx] = false;
                                         if get_color(piece) == BLACK {
                                             let mut new_board = self.clone();
-                                            new_board.set(destination.0, destination.1, PRESENT | WHITE | ROOK);
+                                            new_board.set(rank, file, EMPTY);
+                                            new_board.set(destination.0, destination.1, PRESENT | WHITE | get_type(source_piece));
                                             moves.push(new_board);
                                         }
                                     }
@@ -143,7 +164,7 @@ impl Board {
         }
         moves.iter().map(|&board| {
             let mut new_board = board.clone();
-            new_board.inverted();
+            new_board = new_board.inverted();
             new_board.normalize_opponent_pieces();
             new_board
         }).collect()
@@ -235,5 +256,87 @@ impl Board {
             },
             legal_moves,
         );
+    }
+}
+
+impl Display for Board {
+    
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let top_string = {
+            let mut top_string = [0 as u16; 33];
+            top_string[0] = 0x250C;
+            for i in 0..7 {
+                top_string[1+(4*i)] = 0x2500;
+                top_string[1+(4*i)+1] = 0x2500;
+                top_string[1+(4*i)+2] = 0x2500;
+                top_string[1+(4*i)+3] = 0x252C;
+            }
+            top_string[29] = 0x2500;
+            top_string[30] = 0x2500;
+            top_string[31] = 0x2500;
+            top_string[32] = 0x2510;
+
+            String::from_utf16(&top_string).unwrap()
+        };
+
+        let between_string = {
+            let mut between_string = [0 as u16; 33];
+            between_string[0] = 0x251C;
+
+            for i in 0..7 {
+                between_string[1+(4*i)] = 0x2500;
+                between_string[1+(4*i)+1] = 0x2500;
+                between_string[1+(4*i)+2] = 0x2500;
+                between_string[1+(4*i)+3] = 0x253C;
+            }
+            between_string[29] = 0x2500;
+            between_string[30] = 0x2500;
+            between_string[31] = 0x2500;
+            between_string[32] = 0x2524;
+
+            String::from_utf16(&between_string).unwrap()
+        };
+
+        let bottom_string = {
+            let mut bottom_string = [0 as u16; 33];
+            bottom_string[0] = 0x2514;
+
+            for i in 0..7 {
+                bottom_string[1+(4*i)] = 0x2500;
+                bottom_string[1+(4*i)+1] = 0x2500;
+                bottom_string[1+(4*i)+2] = 0x2500;
+                bottom_string[1+(4*i)+3] = 0x2534;
+            }
+            bottom_string[29] = 0x2500;
+            bottom_string[30] = 0x2500;
+            bottom_string[31] = 0x2500;
+            bottom_string[32] = 0x2518;
+
+            String::from_utf16(&bottom_string).unwrap()
+        };
+
+        let mut message = String::from("");
+        message += &top_string;
+        message += "\n";
+
+        for i in 0..8 {
+            let mut row_chars = String::from_utf16(&[0x2502]).unwrap();
+            for j in 0..8 {
+                row_chars += " ";
+                row_chars += &char(self.get(7-i, j));
+                row_chars += " ";
+                row_chars += &String::from_utf16(&[0x2502]).unwrap();
+            }
+            message += &row_chars;
+            message += "\n";
+            if(i!=7) {
+                message += &between_string;
+                message += "\n";
+            }
+        }
+        message += &bottom_string;
+
+        write!(f, "{}", message)
+
     }
 }
