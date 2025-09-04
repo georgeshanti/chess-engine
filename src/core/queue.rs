@@ -14,6 +14,7 @@ pub struct Queue<T> {
     pub tail: Arc<Mutex<Arc<Mutex<Option<QueueNode<T>>>>>>,
 
     waiter: Arc<Condvar>,
+    pub length: Arc<Mutex<usize>>,
 }
 
 impl<T> Queue<T> {
@@ -23,6 +24,7 @@ impl<T> Queue<T> {
             tail: Arc::new(Mutex::new(Arc::new(Mutex::new(None)))),
 
             waiter: Arc::new(Condvar::new()),
+            length: Arc::new(Mutex::new(0)),
         }
     }
 }
@@ -41,6 +43,7 @@ impl<T> QueueTrait<T> for Queue<T> {
         if value.is_empty() {
             return;
         }
+        let len = value.len();
         let new_node = Arc::new(Mutex::new(Some(QueueNode { value, next: Arc::new(Mutex::new(None)) })));
 
         let mut should_update_head = false;
@@ -62,13 +65,16 @@ impl<T> QueueTrait<T> for Queue<T> {
 
         *tail_pointer = new_node.clone();
         drop(tail_pointer);
+        {
+            let mut length = self.length.lock().unwrap();
+            *length = *length + len;
+        }
         if should_update_head {
-            println!("Updating head");
+            // println!("Updating head");
             let mut head_pointer = self.head.lock().unwrap();
             *head_pointer = new_node.clone();
             self.waiter.notify_all();
         }
-
     }
 
     fn dequeue(&self) -> T {
@@ -80,7 +86,7 @@ impl<T> QueueTrait<T> for Queue<T> {
                 match *scoped_head {
                     None => {
                         drop(scoped_head);
-                        println!("Waiting for head");
+                        // println!("Waiting for head");
                         head_pointer = self.waiter.wait(head_pointer).unwrap();
                         scoped_head = head_pointer.lock().unwrap();
                     },
@@ -124,6 +130,10 @@ impl<T> QueueTrait<T> for Queue<T> {
         // if elapsed > 0 {
         //     println!("it took {}ns", elapsed);
         // }
+        {
+            let mut length = self.length.lock().unwrap();
+            *length = *length - 1;
+        }
         return_value
     }
 }
