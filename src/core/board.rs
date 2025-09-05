@@ -89,13 +89,13 @@ impl Board {
             let source_piece = self.pieces[i];
             match get_type(source_piece) {
                 PAWN => {
-                    if get_presence(self.get(rank+1, file)) == EMPTY {
+                    if rank<7 && get_presence(self.get(rank+1, file)) == EMPTY {
                         let mut new_board = self.clone();
                         new_board.set(rank, file, EMPTY);
                         new_board.set(rank+1, file, PRESENT | WHITE | PAWN | HAS_NOT_MOVED_TWO_SQUARES);
                         moves.push(new_board);
 
-                        if get_presence(self.get(rank+2, file)) == EMPTY {
+                        if rank<6 && get_presence(self.get(rank+2, file)) == EMPTY {
                             let mut new_board = self.clone();
                             new_board.set(rank, file, EMPTY);
                             new_board.set(rank+2, file, PRESENT | WHITE | PAWN | HAS_MOVED_TWO_SQUARES);
