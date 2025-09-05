@@ -3,7 +3,8 @@ mod core;
 use std::{cmp::Ordering, collections::{HashMap, HashSet}, io, sync::{Arc, Mutex, RwLock}, thread::JoinHandle, time::Duration};
 use ratatui::{layout::{Alignment, Constraint, Direction, Layout, Margin, Rect}, text::Text, widgets::{Block, Borders, Paragraph}, DefaultTerminal, Frame};
 use regex::Regex;
-use crossterm::event::{self, Event, KeyCode};
+use crossterm::event::{self, poll, read, Event, KeyCode};
+use thousands::Separable;
 
 use crate::core::{board::*, board_state::*, initial_board::*, piece::*, queue::*};
 
@@ -23,12 +24,23 @@ fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App) {
     let positions_to_evaluate = app.positions_to_evaluate.clone();
     let positions = app.positions.clone();
     let positions_to_reevaluate = app.positions_to_reevaluate.clone();
+    // loop {
+    //     {
+    //         *(app.thread_stats[index].running_status.write().unwrap()) = false;
+    //     }
+
+    //     std::thread::sleep(Duration::from_millis(2000));
+    //     {
+    //         *(app.thread_stats[index].running_status.write().unwrap()) = true;
+    //     }
+    //     std::thread::sleep(Duration::from_millis(2000));
+    // }
     loop {
         {
             *(app.thread_stats[index].running_status.write().unwrap()) = false;
         }
 
-        std::thread::sleep(Duration::from_millis(10000));
+        // std::thread::sleep(Duration::from_millis(10000));
         let _unused = run_lock.read().unwrap();
 
         {
@@ -36,10 +48,6 @@ fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App) {
         }
         // println!("Evaluation engine running");
         let (previous_board, board, board_depth) = positions_to_evaluate.dequeue();
-        {
-            let mut positions_evaluated_length = app.thread_stats[index].positions_evaluated_length.write().unwrap();
-            *positions_evaluated_length = *positions_evaluated_length + 1;
-        }
         {
             let mut current_highest_depth = DEPTH.lock().unwrap();
             if *current_highest_depth < board_depth {
@@ -62,6 +70,12 @@ fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App) {
                 let mut writable_positions = positions.write().unwrap();
                 let new_board_state = Arc::new(RwLock::new(BoardState::new()));
                 writable_positions.insert(board, new_board_state.clone());
+                {
+                    let mut global_positions_evaluated_count = app.positions_evaluated_acount.write().unwrap();
+                    *global_positions_evaluated_count = *global_positions_evaluated_count + 1;
+                    let mut positions_evaluated_length = app.thread_stats[index].positions_evaluated_length.write().unwrap();
+                    *positions_evaluated_length = *positions_evaluated_length + 1;
+                }
                 drop(writable_positions);
                 let evaluated_board_state = board.get_evaluation();
 
@@ -226,15 +240,23 @@ fn prune_engine(run_lock: Arc<RwLock<()>>, positions: Positions, positions_to_ev
 fn main() {
     // println!("Hello, world!");
     let thread_count = std::thread::available_parallelism().unwrap().get();
-    let app = App {
+    // let thread_count = 2;
+    let mut app = App {
         positions: Arc::new(RwLock::new(HashMap::new())),
         positions_to_evaluate: Queue::new(),
         positions_to_reevaluate: Queue::new(),
         run_lock:  Arc::new(RwLock::new(())),
         current_board: Arc::new(Mutex::new(INITIAL_BOARD)),
-        thread_stats: vec![ThreadStat::new(); thread_count],
+        thread_stats: Vec::with_capacity(thread_count),
+        positions_evaluated_acount: Arc::new(RwLock::new(0)),
     };
 
+    for _ in 0..thread_count {
+        app.thread_stats.push(ThreadStat::new());
+    }
+
+    // app.run_engine(app.thread_stats.len());
+    // loop {}
     let mut terminal = ratatui::init();
     let result = app.run(&mut terminal);
     ratatui::restore();
@@ -249,6 +271,7 @@ struct App {
     positions_to_reevaluate: PositionsToReevaluate,
     run_lock: Arc<RwLock<()>>,
     thread_stats: Vec<ThreadStat>,
+    positions_evaluated_acount: Arc<RwLock<usize>>,
 }
 
 #[derive(Clone)]
@@ -267,22 +290,26 @@ impl ThreadStat {
 }
 
 impl App {
-    fn run(&self, terminal: &mut DefaultTerminal) -> Result<(), Box<dyn std::error::Error>> {
+    fn run(&mut self, terminal: &mut DefaultTerminal) -> Result<(), Box<dyn std::error::Error>> {
         let app = self.clone();
         let _unused = std::thread::Builder::new().name(format!("app_main")).spawn(move || {
             app.run_engine(app.thread_stats.len());
         }).unwrap();
-        
+        let t = self.run_lock.clone();
         loop {
             terminal.draw(|frame| self.draw(frame))?;
-
-            if matches!(event::read()?, Event::Key(_)) {
+            
+            if poll(Duration::from_millis(1000))? {
+                // It's guaranteed that `read` won't block, because `poll` returned
+                // `Ok(true)`.
+                let _unused = self.run_lock.write().unwrap();
+                std::thread::sleep(Duration::from_millis(10000));
                 break Ok(());
             }
         }
     }
 
-    fn draw(&self, frame: &mut Frame) {
+    fn draw(&mut self, frame: &mut Frame) {
         // println!("Drawing");
         let thread_count = self.thread_stats.len();
         let vertical_panes = Layout::default()
@@ -292,6 +319,10 @@ impl App {
                 Constraint::Percentage(50),
             ])
             .split(frame.area());
+        let status_panes = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints(vec![Constraint::Length(3), Constraint::Fill(1)])
+            .split(vertical_panes[1].inner(Margin::new(1, 1)));
 
         let left_panes = Layout::default()
             .direction(Direction::Vertical)
@@ -304,7 +335,7 @@ impl App {
         let status_pane = Layout::default()
             .direction(Direction::Vertical)
             .constraints(vec![Constraint::Length(4); thread_count])
-            .split(vertical_panes[1].inner(Margin::new(1, 1)));
+            .split(status_panes[1].inner(Margin::new(1, 1)));
 
         frame.render_widget(Block::default().borders(Borders::ALL), left_panes[0]);
         frame.render_widget(Block::default().borders(Borders::ALL), left_panes[1]);
@@ -317,6 +348,25 @@ impl App {
         frame.render_widget(Paragraph::new(format!("{}", self.current_board.lock().unwrap())), left_panes[1].inner(Margin::new(1, 1)));
         // frame.render_widget(Block::default().borders(Borders::ALL), vertical_panes[1]);
         // frame.render_widget(Block::default().borders(Borders::ALL), vertical_panes[0]);
+
+        let queue_panes = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints(vec![Constraint::Fill(1); 2])
+            .split(status_panes[0]);
+        let left_queue_panes = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints(vec![Constraint::Length(1); 3])
+            .split(queue_panes[0]);
+        let right_queue_panes = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints(vec![Constraint::Length(1); 3])
+            .split(queue_panes[1]);
+        frame.render_widget(Paragraph::new("Queue:"), left_queue_panes[0]);
+        frame.render_widget(Paragraph::new(format!("{}", self.positions_to_evaluate.length.lock().unwrap().separate_with_commas())).alignment(Alignment::Right), right_queue_panes[0]);
+        frame.render_widget(Paragraph::new("Positions evaluated:"), left_queue_panes[1]);
+        frame.render_widget(Paragraph::new(format!("{}", self.positions.read().unwrap().len().separate_with_commas())).alignment(Alignment::Right), right_queue_panes[1]);
+        frame.render_widget(Paragraph::new("Positions evaluated pseudo:"), left_queue_panes[2]);
+        frame.render_widget(Paragraph::new(format!("{}", self.positions_evaluated_acount.read().unwrap().separate_with_commas())).alignment(Alignment::Right), right_queue_panes[2]);
         frame.render_widget(Paragraph::new("Engine status"), vertical_panes[1]);
     }
 
@@ -338,18 +388,15 @@ impl App {
         frame.render_widget(Paragraph::new("Status"), left_bars[0]);
         frame.render_widget(Paragraph::new(format!("{}", thread_stat.running_status.read().unwrap())).alignment(Alignment::Right), right_bars[0]);
         frame.render_widget(Paragraph::new("Positions evaluated"), left_bars[1]);
-        frame.render_widget(Paragraph::new(format!("{}", thread_stat.positions_evaluated_length.read().unwrap())).alignment(Alignment::Right), right_bars[1]);
+        frame.render_widget(Paragraph::new(format!("{}", thread_stat.positions_evaluated_length.read().unwrap().separate_with_commas())).alignment(Alignment::Right), right_bars[1]);
     }
 
     fn run_engine(&self, thread_count: usize) {
         self.positions_to_evaluate.queue(vec![(None, INITIAL_BOARD, 0)]);
-    
-        let cpu_count;
-        cpu_count = std::thread::available_parallelism().unwrap().get()-2;
         
         let mut threads: Vec<JoinHandle<()>> = Vec::new();
         // println!("Starting {} threads", cpu_count);
-        for i  in 0..thread_count {
+        for i  in 0..self.thread_stats.len() {
             let app = self.clone();
             let run_lock = self.run_lock.clone();
             let join_handle = std::thread::Builder::new().name(format!("evaluation_engine_{}", i)).spawn(move || {
@@ -370,86 +417,86 @@ impl App {
         //     println!("{}", m.inverted());
         // }
         // return;
+        loop {}
+        // loop {
+        //     let mut current_board = self.current_board.lock().unwrap();
+        //     // println!("{}", current_board);
+        //     let mut buffer = String::new();
+        //     io::stdin().read_line(&mut buffer).unwrap();
+        //     let re = Regex::new(r"(\d)-(\d)-(\d)-(\d)").unwrap();
+        //     // extract the numbers from the buffer
+        //     let captures = re.captures(&buffer).unwrap();
+        //     let from_file = captures[1].parse::<usize>().unwrap();
+        //     let from_rank = captures[2].parse::<usize>().unwrap();
+        //     let to_file = captures[3].parse::<usize>().unwrap();
+        //     let to_rank = captures[4].parse::<usize>().unwrap();
+        //     // println!("from_rank:{:?}", from_rank);
+        //     // println!("from_file:{:?}", from_file);
+        //     // println!("to_rank:{:?}", to_rank);
+        //     // println!("to_file:{:?}", to_file);
+        //     let source_piece = current_board.get(from_rank, from_file);
+        //     let target_piece = current_board.get(to_rank, to_file);
+        //     // println!("source:{:?}", char(source_piece));
+        //     // println!("target:{:?}", char(target_piece));
+        //     // println!("{} {} {} {}", get_presence(source_piece) == EMPTY, get_color(source_piece) == BLACK, get_presence(target_piece) == EMPTY, get_color(target_piece) == BLACK);
+        //     if get_presence(source_piece) == EMPTY || get_color(source_piece) == BLACK || !(get_presence(target_piece) == EMPTY || get_color(target_piece) == BLACK) {
+        //         // println!("Invalid move 1");
+        //         continue;
+        //     }
     
-        loop {
-            let mut current_board = self.current_board.lock().unwrap();
-            // println!("{}", current_board);
-            let mut buffer = String::new();
-            io::stdin().read_line(&mut buffer).unwrap();
-            let re = Regex::new(r"(\d)-(\d)-(\d)-(\d)").unwrap();
-            // extract the numbers from the buffer
-            let captures = re.captures(&buffer).unwrap();
-            let from_file = captures[1].parse::<usize>().unwrap();
-            let from_rank = captures[2].parse::<usize>().unwrap();
-            let to_file = captures[3].parse::<usize>().unwrap();
-            let to_rank = captures[4].parse::<usize>().unwrap();
-            // println!("from_rank:{:?}", from_rank);
-            // println!("from_file:{:?}", from_file);
-            // println!("to_rank:{:?}", to_rank);
-            // println!("to_file:{:?}", to_file);
-            let source_piece = current_board.get(from_rank, from_file);
-            let target_piece = current_board.get(to_rank, to_file);
-            // println!("source:{:?}", char(source_piece));
-            // println!("target:{:?}", char(target_piece));
-            // println!("{} {} {} {}", get_presence(source_piece) == EMPTY, get_color(source_piece) == BLACK, get_presence(target_piece) == EMPTY, get_color(target_piece) == BLACK);
-            if get_presence(source_piece) == EMPTY || get_color(source_piece) == BLACK || !(get_presence(target_piece) == EMPTY || get_color(target_piece) == BLACK) {
-                // println!("Invalid move 1");
-                continue;
-            }
+        //     let next_board = {
+        //         let positions = self.positions.read().unwrap();
+        //         let current_board_state = positions.get(&*current_board);
+        //         if let Some(board_state) = current_board_state {
+        //             let board_state = board_state.read().unwrap();
     
-            let next_board = {
-                let positions = self.positions.read().unwrap();
-                let current_board_state = positions.get(&*current_board);
-                if let Some(board_state) = current_board_state {
-                    let board_state = board_state.read().unwrap();
-    
-                    let mut next_board: Option<Board> = None;
-                    for next_move in board_state.next_moves.iter() {
-                        let source_piece = next_move.get(7-from_rank, 7-from_file);
-                        let target_piece = next_move.get(7-to_rank, 7-to_file);
-                        if get_presence(source_piece) == EMPTY && get_presence(target_piece) == PRESENT && get_color(target_piece) == BLACK {
-                            next_board = Some(*next_move);
-                            break;
-                        }
-                    }
-                    match next_board {
-                        Some(next_board) => next_board,
-                        None => {
-                            // println!("Invalid move 2");
-                            continue;
-                        }
-                    }
-                } else {
-                    // println!("Invalid move 3");
-                    continue;
-                }
-            };
+        //             let mut next_board: Option<Board> = None;
+        //             for next_move in board_state.next_moves.iter() {
+        //                 let source_piece = next_move.get(7-from_rank, 7-from_file);
+        //                 let target_piece = next_move.get(7-to_rank, 7-to_file);
+        //                 if get_presence(source_piece) == EMPTY && get_presence(target_piece) == PRESENT && get_color(target_piece) == BLACK {
+        //                     next_board = Some(*next_move);
+        //                     break;
+        //                 }
+        //             }
+        //             match next_board {
+        //                 Some(next_board) => next_board,
+        //                 None => {
+        //                     // println!("Invalid move 2");
+        //                     continue;
+        //                 }
+        //             }
+        //         } else {
+        //             // println!("Invalid move 3");
+        //             continue;
+        //         }
+        //     };
             
-            {
-                let positions = self.positions.write().unwrap();
-                let next_board_state = positions.get(&next_board);
-                match next_board_state {
-                    Some(next_board_state) => {
-                        let next_board_state = next_board_state.read().unwrap();
-                        let next_best_move = next_board_state.next_best_move.read().unwrap();
-                        match *next_best_move {
-                            None => {
-                                panic!("No next best move");
-                            }
-                            Some(next_best_move) => {
-                                *current_board = next_best_move.board;
-                            }
-                        }
-                    },
-                    None => {
-                        // println!("Positions: {}", positions.len());
-                        // println!("Depth: {}", DEPTH.lock().unwrap());
-                        panic!("Have not evaluated position yet");
-                    }
-                }
-            }
+        //     {
+        //         let positions = self.positions.write().unwrap();
+        //         let next_board_state = positions.get(&next_board);
+        //         match next_board_state {
+        //             Some(next_board_state) => {
+        //                 let next_board_state = next_board_state.read().unwrap();
+        //                 let next_best_move = next_board_state.next_best_move.read().unwrap();
+        //                 match *next_best_move {
+        //                     None => {
+        //                         panic!("No next best move");
+        //                     }
+        //                     Some(next_best_move) => {
+        //                         *current_board = next_best_move.board;
+        //                     }
+        //                 }
+        //             },
+        //             None => {
+        //                 // println!("Positions: {}", positions.len());
+        //                 // println!("Depth: {}", DEPTH.lock().unwrap());
+        //                 panic!("Have not evaluated position yet");
+        //             }
+        //         }
+        //     }
     
-            prune_engine(self.run_lock.clone(), self.positions.clone(), self.positions_to_evaluate.clone(), *current_board);
-        }
+        //     prune_engine(self.run_lock.clone(), self.positions.clone(), self.positions_to_evaluate.clone(), *current_board);
+        // }
     }
 }
