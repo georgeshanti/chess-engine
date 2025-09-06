@@ -6,9 +6,9 @@ use regex::Regex;
 use crossterm::event::{self, poll, read, Event, KeyCode};
 use thousands::Separable;
 
-use crate::core::{board::*, board_state::*, initial_board::*, piece::*, queue::*};
+use crate::core::{board::*, board_state::*, initial_board::*, piece::*, queue::*, tree::*};
 
-type Positions = Arc<RwLock<HashMap<Board, Arc<RwLock<BoardState>>>>>;
+type Positions = Tree<Board, Arc<RwLock<BoardState>>>;
 type PositionsToEvaluate = Queue<(Option<Board>, Board, usize)>;
 type PositionsToReevaluate = Queue<Board>;
 
@@ -55,62 +55,44 @@ fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App) {
             }
         }
         // println!("Evaluation engine dequeued: {}", engine_id);
-        let readable_positions = positions.read().unwrap();
-        if let Some(parent) = previous_board {
-            if readable_positions.get(&parent).is_none() {
-                // println!("Parent not found: {}", parent);
-                continue;
-            }
-        }
-        let board_state = readable_positions.get(&board);
-        match board_state {
-            None => {
-                // println!("Evaluation engine inserting");
-                drop(readable_positions);
-                let mut writable_positions = positions.write().unwrap();
-                let new_board_state = Arc::new(RwLock::new(BoardState::new()));
-                writable_positions.insert(board, new_board_state.clone());
-                {
-                    let mut global_positions_evaluated_count = app.positions_evaluated_acount.write().unwrap();
-                    *global_positions_evaluated_count = *global_positions_evaluated_count + 1;
-                    let mut positions_evaluated_length = app.thread_stats[index].positions_evaluated_length.write().unwrap();
-                    *positions_evaluated_length = *positions_evaluated_length + 1;
-                }
-                drop(writable_positions);
-                let evaluated_board_state = board.get_evaluation();
 
-                let mut writable_board_state = new_board_state.write().unwrap();
-                writable_board_state.self_evaluation = evaluated_board_state.0;
-                writable_board_state.next_moves = evaluated_board_state.1.clone();
-                match previous_board {
-                    Some(previous_board) => {
-                        writable_board_state.previous_moves.write().unwrap().insert(previous_board);
-                        positions_to_reevaluate.queue(vec![previous_board]);
-                    },
-                    _ => {}
-                };
-                drop(writable_board_state);
-
-                let mut next_boards: Vec<(Option<Board>, Board, usize)> = Vec::new();
-                for next_board in evaluated_board_state.1 {
-                    match positions.read().unwrap().get(&next_board) {
-                        None => {
-                            next_boards.push((Some(board), next_board, board_depth + 1));
-                        },
-                        Some(board_state) => {
-                            append_parent(board_state, &previous_board, &positions_to_reevaluate);
-                        }
-                    }
-                    // next_boards.push((Some(board), next_board, board_depth + 1));
-                }
-                positions_to_evaluate.queue(next_boards);
-
-                // println!("Evaluation engine inserted");
-            },
-            Some(board_state) => {
-                // println!("Evaluation engine reading");
+        let mut should_evaluate = None;
+        positions.compute(
+            board,
+            |board_state| {
                 append_parent(&board_state, &previous_board, &positions_to_reevaluate);
             },
+            || {
+                let arc = Arc::new(RwLock::new(BoardState::new()));
+                should_evaluate = Some(arc.clone());
+                arc
+            },
+        );
+        if let Some(new_board_state) = should_evaluate {
+            {
+                let mut global_positions_evaluated_count = app.positions_evaluated_acount.write().unwrap();
+                *global_positions_evaluated_count = *global_positions_evaluated_count + 1;
+                let mut positions_evaluated_length = app.thread_stats[index].positions_evaluated_length.write().unwrap();
+                *positions_evaluated_length = *positions_evaluated_length + 1;
+            }
+            let evaluated_board_state = board.get_evaluation();
+            let mut writable_board_state = new_board_state.write().unwrap();
+            writable_board_state.self_evaluation = evaluated_board_state.0;
+            writable_board_state.next_moves = evaluated_board_state.1.clone();
+            match previous_board {
+                Some(previous_board) => {
+                    writable_board_state.previous_moves.write().unwrap().insert(previous_board);
+                    positions_to_reevaluate.queue(vec![previous_board]);
+                },
+                _ => {}
+            };
+            drop(writable_board_state);
+
+            let mut next_boards: Vec<(Option<Board>, Board, usize)> = Vec::new();
+            for next_board in evaluated_board_state.1 {
+                next_boards.push((Some(board), next_board, board_depth + 1));
+            }
+            positions_to_evaluate.queue(next_boards);
         }
         // println!("Evaluation engine completed: {}", engine_id);
     }
@@ -134,115 +116,115 @@ fn append_parent(board_state: &Arc<RwLock<BoardState>>, previous_board: &Option<
     };
 }
 
-fn reevaluation_engine(run_lock: Arc<RwLock<()>>, positions_to_reevaluate: Queue<Board>, positions: Positions) {
-    // println!("Re-Evaluation engine started");
-    let start_time = std::time::Instant::now();
-    // while start_time.elapsed() < RUN_DURATION {
-    loop {
-        let _unused = run_lock.read().unwrap();
-        // println!("Reeval running");
-        let board_to_reevaluate = positions_to_reevaluate.dequeue();
-        let positions = positions.read().unwrap();
+// fn reevaluation_engine(run_lock: Arc<RwLock<()>>, positions_to_reevaluate: Queue<Board>, positions: Positions) {
+//     // println!("Re-Evaluation engine started");
+//     let start_time = std::time::Instant::now();
+//     // while start_time.elapsed() < RUN_DURATION {
+//     loop {
+//         let _unused = run_lock.read().unwrap();
+//         // println!("Reeval running");
+//         let board_to_reevaluate = positions_to_reevaluate.dequeue();
+//         let positions = positions.read().unwrap();
 
-        if let Some(board_state) = positions.get(&board_to_reevaluate) {
-            let board_state = board_state.read().unwrap();
-            let mut next_best_move = board_state.next_best_move.write().unwrap();
+//         if let Some(board_state) = positions.get(&board_to_reevaluate) {
+//             let board_state = board_state.read().unwrap();
+//             let mut next_best_move = board_state.next_best_move.write().unwrap();
 
-            let mut new_next_best_move: Option<NextBestMove> = None;
+//             let mut new_next_best_move: Option<NextBestMove> = None;
 
-            for next_position in board_state.next_moves.iter() {
-                if let Some(next_position_board_state) = positions.get(&next_position) {
-                    let next_position_board_state = next_position_board_state.read().unwrap();
-                    let next_position_best_evaluation =  next_position_board_state.next_best_move.read().unwrap();
-                    let next_position_best_evaluation = match *next_position_best_evaluation {
-                        Some(next_position_best_evaluation) => next_position_best_evaluation.evaluation,
-                        None => next_position_board_state.self_evaluation,
-                    }.invert();
-                    match new_next_best_move {
-                        None => {
-                            new_next_best_move = Some(NextBestMove{
-                                board: *next_position,
-                                evaluation: next_position_best_evaluation,
-                            });
-                        }
-                        Some(current_next_best_move) => {
-                            if current_next_best_move.evaluation.compare_to(&next_position_best_evaluation) == Ordering::Less {
-                                new_next_best_move = Some(NextBestMove{
-                                    board: *next_position,
-                                    evaluation: next_position_best_evaluation,
-                                });
-                            }
-                        }
-                    }
-                }
-            }
-            if let Some(new_next_best_move) = new_next_best_move {
-                if Some(new_next_best_move) != *next_best_move {
-                    // println!("Updating best move");
-                    *next_best_move = Some(new_next_best_move);
+//             for next_position in board_state.next_moves.iter() {
+//                 if let Some(next_position_board_state) = positions.get(&next_position) {
+//                     let next_position_board_state = next_position_board_state.read().unwrap();
+//                     let next_position_best_evaluation =  next_position_board_state.next_best_move.read().unwrap();
+//                     let next_position_best_evaluation = match *next_position_best_evaluation {
+//                         Some(next_position_best_evaluation) => next_position_best_evaluation.evaluation,
+//                         None => next_position_board_state.self_evaluation,
+//                     }.invert();
+//                     match new_next_best_move {
+//                         None => {
+//                             new_next_best_move = Some(NextBestMove{
+//                                 board: *next_position,
+//                                 evaluation: next_position_best_evaluation,
+//                             });
+//                         }
+//                         Some(current_next_best_move) => {
+//                             if current_next_best_move.evaluation.compare_to(&next_position_best_evaluation) == Ordering::Less {
+//                                 new_next_best_move = Some(NextBestMove{
+//                                     board: *next_position,
+//                                     evaluation: next_position_best_evaluation,
+//                                 });
+//                             }
+//                         }
+//                     }
+//                 }
+//             }
+//             if let Some(new_next_best_move) = new_next_best_move {
+//                 if Some(new_next_best_move) != *next_best_move {
+//                     // println!("Updating best move");
+//                     *next_best_move = Some(new_next_best_move);
 
-                    let mut previous_boards: Vec<Board> = Vec::new();
-                    for previous_board in board_state.previous_moves.read().unwrap().iter() {
-                        previous_boards.push(*previous_board);
-                    }
-                    positions_to_reevaluate.queue(previous_boards);
-                } else {
-                    // println!("Not updating best move #1");
-                }
-            }
-        }
-    }
-}
+//                     let mut previous_boards: Vec<Board> = Vec::new();
+//                     for previous_board in board_state.previous_moves.read().unwrap().iter() {
+//                         previous_boards.push(*previous_board);
+//                     }
+//                     positions_to_reevaluate.queue(previous_boards);
+//                 } else {
+//                     // println!("Not updating best move #1");
+//                 }
+//             }
+//         }
+//     }
+// }
 
-fn prune_engine(run_lock: Arc<RwLock<()>>, positions: Positions, positions_to_evaluate: PositionsToEvaluate, root_board: Board) {
-    let _unused = run_lock.write().unwrap();
-    // println!("Pruning engine started");
-    let evaluated_boards = {
-        let positions = positions.read().unwrap();
-        let mut evaluated_boards = positions.keys().cloned().collect::<HashSet<Board>>();
-        let mut parent_boards = vec![root_board];
-        let mut child_boards = vec![];
-        let mut removed = true;
-        while parent_boards.len() > 0 && removed {
-            // println!("Evaluated boards: {}", evaluated_boards.len());
-            removed = false;
-            for parent_board in parent_boards.iter() {
-                let was_present = evaluated_boards.remove(parent_board);
-                if was_present {
-                    removed = true;
-                }
-                if let Some(board_state) = positions.get(parent_board) {
-                    let board_state = board_state.read().unwrap();
-                    child_boards.extend(board_state.next_moves.iter().collect::<Vec<&Board>>());
-                }
-            }
-            parent_boards = child_boards;
-            child_boards = vec![];
-        }
-        evaluated_boards
-    };
-    // println!("Found reachable boards");
-    {
-        let mut positions = positions.write().unwrap();
-        for board in evaluated_boards.iter() {
-            positions.remove(board);
-        }
-    }
-    // println!("Removed unreachable boards from positions");
-    let removed_from_queue = 0;
-    // positions_to_evaluate.prune(&evaluated_boards);
-    // println!("Removed unreachable boards from queue");
-    // println!("Number of removed boards: {}", evaluated_boards.len());
-    // println!("Number of removed boards from queue: {}", removed_from_queue);
-    // println!("Pruning engine completed");
-}
+// fn prune_engine(run_lock: Arc<RwLock<()>>, positions: Positions, positions_to_evaluate: PositionsToEvaluate, root_board: Board) {
+//     let _unused = run_lock.write().unwrap();
+//     // println!("Pruning engine started");
+//     let evaluated_boards = {
+//         let positions = positions.read().unwrap();
+//         let mut evaluated_boards = positions.keys().cloned().collect::<HashSet<Board>>();
+//         let mut parent_boards = vec![root_board];
+//         let mut child_boards = vec![];
+//         let mut removed = true;
+//         while parent_boards.len() > 0 && removed {
+//             // println!("Evaluated boards: {}", evaluated_boards.len());
+//             removed = false;
+//             for parent_board in parent_boards.iter() {
+//                 let was_present = evaluated_boards.remove(parent_board);
+//                 if was_present {
+//                     removed = true;
+//                 }
+//                 if let Some(board_state) = positions.get(parent_board) {
+//                     let board_state = board_state.read().unwrap();
+//                     child_boards.extend(board_state.next_moves.iter().collect::<Vec<&Board>>());
+//                 }
+//             }
+//             parent_boards = child_boards;
+//             child_boards = vec![];
+//         }
+//         evaluated_boards
+//     };
+//     // println!("Found reachable boards");
+//     {
+//         let mut positions = positions.write().unwrap();
+//         for board in evaluated_boards.iter() {
+//             positions.remove(board);
+//         }
+//     }
+//     // println!("Removed unreachable boards from positions");
+//     let removed_from_queue = 0;
+//     // positions_to_evaluate.prune(&evaluated_boards);
+//     // println!("Removed unreachable boards from queue");
+//     // println!("Number of removed boards: {}", evaluated_boards.len());
+//     // println!("Number of removed boards from queue: {}", removed_from_queue);
+//     // println!("Pruning engine completed");
+// }
 
 fn main() {
     // println!("Hello, world!");
     let thread_count = std::thread::available_parallelism().unwrap().get();
     // let thread_count = 2;
     let mut app = App {
-        positions: Arc::new(RwLock::new(HashMap::new())),
+        positions: Tree::new(),
         positions_to_evaluate: Queue::new(),
         positions_to_reevaluate: Queue::new(),
         run_lock:  Arc::new(RwLock::new(())),
@@ -364,7 +346,7 @@ impl App {
         frame.render_widget(Paragraph::new("Queue:"), left_queue_panes[0]);
         frame.render_widget(Paragraph::new(format!("{}", self.positions_to_evaluate.length.lock().unwrap().separate_with_commas())).alignment(Alignment::Right), right_queue_panes[0]);
         frame.render_widget(Paragraph::new("Positions evaluated:"), left_queue_panes[1]);
-        frame.render_widget(Paragraph::new(format!("{}", self.positions.read().unwrap().len().separate_with_commas())).alignment(Alignment::Right), right_queue_panes[1]);
+        frame.render_widget(Paragraph::new(format!("{}", self.positions.len().separate_with_commas())).alignment(Alignment::Right), right_queue_panes[1]);
         frame.render_widget(Paragraph::new("Positions evaluated pseudo:"), left_queue_panes[2]);
         frame.render_widget(Paragraph::new(format!("{}", self.positions_evaluated_acount.read().unwrap().separate_with_commas())).alignment(Alignment::Right), right_queue_panes[2]);
         frame.render_widget(Paragraph::new("Engine status"), vertical_panes[1]);
@@ -408,9 +390,9 @@ impl App {
             let positions = self.positions.clone();
             let positions_to_reevaluate = self.positions_to_reevaluate.clone();
             let run_lock = self.run_lock.clone();
-            let _unused = std::thread::Builder::new().name(format!("reevaluation_engine")).spawn(move || {
-                reevaluation_engine(run_lock, positions_to_reevaluate, positions);
-            }).unwrap();
+            // let _unused = std::thread::Builder::new().name(format!("reevaluation_engine")).spawn(move || {
+            //     reevaluation_engine(run_lock, positions_to_reevaluate, positions);
+            // }).unwrap();
         }
 
         // for m in current_board.find_moves() {
