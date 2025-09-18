@@ -7,7 +7,7 @@ use crossterm::event::{self, poll};
 use thousands::Separable;
 use tui_input::{backend::crossterm::EventHandler, Input};
 
-use crate::core::{board::*, board_state::*, engine::{evaluation_engine::*, reevaluation_engine::*, structs::{PositionsToEvaluate, PositionsToReevaluate}}, initial_board::*, map::Positions, piece::*, queue::*, set::Set};
+use crate::core::{board::*, board_state::*, engine::{evaluation_engine::*, reevaluation_engine::*, structs::{PositionsToEvaluate, PositionsToReevaluate}}, initial_board::*, macros::filename, map::Positions, piece::*, queue::*, set::Set};
 
 fn prune_engine(run_lock: Arc<RwLock<()>>, positions: Positions, positions_to_evaluate: PositionsToEvaluate, root_board: Board) {
     let _unused = run_lock.write().unwrap();
@@ -47,8 +47,9 @@ fn prune_engine(run_lock: Arc<RwLock<()>>, positions: Positions, positions_to_ev
 
 fn main() {
     unsafe {
-        let file_name = format!("logs/{}.log", chrono::Local::now().format("%Y-%m-%d_%H-%M-%S").to_string());
-        std::env::set_var("LOG_FILE", file_name);
+        let f = format!("logs/{}.log", chrono::Local::now().format("%Y-%m-%d_%H-%M-%S").to_string());
+        let mut file_name = filename.write().unwrap();
+        *file_name = f;
     }
 
     log!("Hello, world!");
