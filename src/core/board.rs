@@ -6,7 +6,7 @@ use std::sync::RwLock;
 use crate::core::piece::*;
 use crate::core::board_state::*;
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Board {
     pub pieces: [u8; 64],
 }

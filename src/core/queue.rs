@@ -27,19 +27,8 @@ impl<T> Queue<T> {
             length: Arc::new(Mutex::new(0)),
         }
     }
-}
 
-pub trait QueueTrait<T> {
-    fn queue(&self, value: Vec<T>);
-    fn dequeue(&self) -> T;
-}
-
-pub trait QueuePruneTrait<T> {
-    fn prune(&self, value: &HashSet<T>);
-}
-
-impl<T> QueueTrait<T> for Queue<T> {
-    fn queue(&self, value: Vec<T>) {
+    pub fn queue(&self, value: Vec<T>) {
         if value.is_empty() {
             return;
         }
@@ -77,7 +66,7 @@ impl<T> QueueTrait<T> for Queue<T> {
         }
     }
 
-    fn dequeue(&self) -> T {
+    pub fn dequeue(&self) -> T {
         let mut head_pointer = self.head.lock().unwrap();
         // let start = SystemTime::now();
         let mut head = {
@@ -136,6 +125,10 @@ impl<T> QueueTrait<T> for Queue<T> {
         }
         return_value
     }
+}
+
+pub trait QueuePruneTrait<T> {
+    fn prune(&self, value: &HashSet<T>);
 }
 
 impl QueuePruneTrait<Board> for Queue<(Option<Board>, Board, usize)> {
