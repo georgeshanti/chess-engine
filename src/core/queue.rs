@@ -1,4 +1,4 @@
-use std::{collections::HashSet, sync::{Arc, Condvar, Mutex}};
+use std::{collections::HashSet, sync::{Arc, Condvar, Mutex, RwLock}};
 
 use crate::core::board::Board;
 
@@ -24,11 +24,33 @@ impl<T> DistributedQueue<T> {
     }
 
     pub fn queue(&self, value: Vec<T>) {
+        // let current_node = {
+        //     let mut current_node = self.current_node.lock().unwrap();
+        //     let index_to_queue_to = *current_node;
+        //     *current_node = (*current_node + 1) % self.size;
+        //     index_to_queue_to
+        // };
         let current_node = {
-            let mut current_node = self.current_node.lock().unwrap();
-            let index_to_queue_to = *current_node;
-            *current_node = (*current_node + 1) % self.size;
-            index_to_queue_to
+            let mut shortest_queue_length: Option<usize> = None;
+            let mut shortest_queue_length_index = 0;
+            for i in 0..self.queues.len() {
+                let queue_length = {
+                    *(self.queues[i].length.read().unwrap())
+                };
+                match shortest_queue_length {
+                    None => {
+                        shortest_queue_length = Some(queue_length);
+                        shortest_queue_length_index = i;
+                    }
+                    Some(value) => {
+                        if queue_length < value {
+                            shortest_queue_length = Some(queue_length);
+                            shortest_queue_length_index = i;
+                        }
+                    }
+                }
+            }
+            shortest_queue_length_index
         };
         self.queues[current_node].queue(value);
     }
@@ -50,7 +72,7 @@ pub struct Queue<T> {
     pub tail: Arc<Mutex<Arc<Mutex<Option<QueueNode<T>>>>>>,
 
     waiter: Arc<Condvar>,
-    pub length: Arc<Mutex<usize>>,
+    pub length: Arc<RwLock<usize>>,
 }
 
 impl<T> Queue<T> {
@@ -60,7 +82,7 @@ impl<T> Queue<T> {
             tail: Arc::new(Mutex::new(Arc::new(Mutex::new(None)))),
 
             waiter: Arc::new(Condvar::new()),
-            length: Arc::new(Mutex::new(0)),
+            length: Arc::new(RwLock::new(0)),
         }
     }
 
@@ -91,7 +113,7 @@ impl<T> Queue<T> {
         *tail_pointer = new_node.clone();
         drop(tail_pointer);
         {
-            let mut length = self.length.lock().unwrap();
+            let mut length = self.length.write().unwrap();
             *length = *length + len;
         }
         if should_update_head {
@@ -156,7 +178,7 @@ impl<T> Queue<T> {
         //     println!("it took {}ns", elapsed);
         // }
         {
-            let mut length = self.length.lock().unwrap();
+            let mut length = self.length.write().unwrap();
             *length = *length - 1;
         }
         return_value

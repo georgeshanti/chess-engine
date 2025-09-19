@@ -7,7 +7,7 @@ use crossterm::event::{poll};
 use thousands::Separable;
 use tui_input::{backend::crossterm::EventHandler, Input};
 
-use crate::core::{board::*, engine::{evaluation_engine::*, reevaluation_engine::*, structs::{PositionsToEvaluate, PositionsToReevaluate}}, initial_board::*, macros::FILENAME, map::Positions, piece::*, queue::*, set::Set};
+use crate::core::{board::*, engine::{evaluation_engine::*, reevaluation_engine::*, structs::{PositionsToEvaluate, PositionsToReevaluate}}, initial_board::*, log::FILENAME, map::Positions, piece::*, queue::*, set::Set};
 
 fn prune_engine(run_lock: Arc<RwLock<()>>, positions: Positions, positions_to_evaluate: PositionsToEvaluate, root_board: Board) {
     let _unused = run_lock.write().unwrap();

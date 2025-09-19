@@ -4,3 +4,4 @@ winning_position.json
 # Added by cargo
 
 /target
+/logs

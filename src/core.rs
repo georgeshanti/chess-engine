@@ -9,6 +9,6 @@ pub mod queue;
 pub mod map;
 pub mod set;
 
-pub mod macros;
+pub mod log;
 
 pub mod engine;

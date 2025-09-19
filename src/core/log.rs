@@ -16,11 +16,13 @@ macro_rules! headless {
 #[macro_export]
 macro_rules! log {
     ($($arg:tt)*) => {
+        let path = crate::core::log::FILENAME.read().unwrap().to_string();
+        std::fs::create_dir_all(std::path::Path::new(&path).parent().unwrap().clone()).unwrap();
         let mut file = std::fs::OpenOptions::new()
         .write(true)
         .append(true)
         .create(true)
-        .open(core::macros::FILENAME.read().unwrap().to_string())
+        .open(path)
         .unwrap();
 
         let log_line = format!("{}: {}\n", chrono::Local::now().format("%H:%M:%S").to_string(), format!($($arg)*));
