@@ -1,13 +1,13 @@
 mod core;
 
-use std::{cmp::Ordering, collections::{HashMap, HashSet}, io::{self, Write}, sync::{Arc, Mutex, RwLock}, thread::JoinHandle, time::Duration};
-use ratatui::{crossterm::event::{read, Event, KeyCode, KeyEvent}, layout::{Alignment, Constraint, Direction, Layout, Margin, Rect}, text::Text, widgets::{Block, Borders, Paragraph}, DefaultTerminal, Frame};
+use std::{sync::{Arc, Mutex, RwLock}, thread::JoinHandle, time::Duration};
+use ratatui::{crossterm::event::{read, Event, KeyCode}, layout::{Alignment, Constraint, Direction, Layout, Margin, Rect}, widgets::{Block, Borders, Paragraph}, DefaultTerminal, Frame};
 use regex::Regex;
-use crossterm::event::{self, poll};
+use crossterm::event::{poll};
 use thousands::Separable;
 use tui_input::{backend::crossterm::EventHandler, Input};
 
-use crate::core::{board::*, board_state::*, engine::{evaluation_engine::*, reevaluation_engine::*, structs::{PositionsToEvaluate, PositionsToReevaluate}}, initial_board::*, macros::filename, map::Positions, piece::*, queue::*, set::Set};
+use crate::core::{board::*, engine::{evaluation_engine::*, reevaluation_engine::*, structs::{PositionsToEvaluate, PositionsToReevaluate}}, initial_board::*, macros::FILENAME, map::Positions, piece::*, queue::*, set::Set};
 
 fn prune_engine(run_lock: Arc<RwLock<()>>, positions: Positions, positions_to_evaluate: PositionsToEvaluate, root_board: Board) {
     let _unused = run_lock.write().unwrap();
@@ -48,7 +48,7 @@ fn prune_engine(run_lock: Arc<RwLock<()>>, positions: Positions, positions_to_ev
 fn main() {
     unsafe {
         let f = format!("logs/{}.log", chrono::Local::now().format("%Y-%m-%d_%H-%M-%S").to_string());
-        let mut file_name = filename.write().unwrap();
+        let mut file_name = FILENAME.write().unwrap();
         *file_name = f;
     }
 
@@ -57,7 +57,7 @@ fn main() {
     // let thread_count = 2;
     let mut app = App {
         positions: Positions::new(),
-        positions_to_evaluate: Queue::new(),
+        positions_to_evaluate: DistributedQueue::new(thread_count),
         positions_to_reevaluate: Set::new(),
         run_lock:  Arc::new(RwLock::new(())),
         current_board: Arc::new(Mutex::new(INITIAL_BOARD)),
@@ -234,7 +234,7 @@ impl App {
             .constraints(vec![Constraint::Length(1); 4])
             .split(queue_panes[1]);
         frame.render_widget(Paragraph::new("Queue:"), left_queue_panes[0]);
-        frame.render_widget(Paragraph::new(format!("{}", self.positions_to_evaluate.length.lock().unwrap().separate_with_commas())).alignment(Alignment::Right), right_queue_panes[0]);
+        frame.render_widget(Paragraph::new(format!("{}", 0.separate_with_commas())).alignment(Alignment::Right), right_queue_panes[0]);
         frame.render_widget(Paragraph::new("Board Pieces:"), left_queue_panes[1]);
         let len = {
             self.positions.map.read().unwrap().len()

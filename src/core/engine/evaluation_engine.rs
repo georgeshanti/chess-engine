@@ -34,7 +34,7 @@ pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App) {
             *(app.thread_stats[index].running_status.write().unwrap()) = true;
         }
         // println!("Evaluation engine running");
-        let (previous_board, board, board_depth) = positions_to_evaluate.dequeue();
+        let (previous_board, board, board_depth) = positions_to_evaluate.dequeue(index);
         headless!("Got board");
         // println!("Evaluation engine dequeued: {}", engine_id);
         headless!("Checking if board is present");

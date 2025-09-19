@@ -1,6 +1,6 @@
 use std::sync::RwLock;
 
-pub static filename: RwLock<String> = RwLock::new(String::new());
+pub static FILENAME: RwLock<String> = RwLock::new(String::new());
 pub static headless_flag: RwLock<bool> = RwLock::new(false);
 
 #[macro_export]
@@ -20,9 +20,11 @@ macro_rules! log {
         .write(true)
         .append(true)
         .create(true)
-        .open(core::macros::filename.read().unwrap().to_string())
+        .open(core::macros::FILENAME.read().unwrap().to_string())
         .unwrap();
 
-        file.write_all(format!("{}: {}\n", chrono::Local::now().format("%H:%M:%S").to_string(), format!($($arg)*)).as_bytes()).unwrap();
+        let log_line = format!("{}: {}\n", chrono::Local::now().format("%H:%M:%S").to_string(), format!($($arg)*));
+
+        std::io::Write::write_all(&mut file, log_line.as_bytes()).unwrap();
     };
 }
