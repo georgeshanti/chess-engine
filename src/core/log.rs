@@ -25,7 +25,7 @@ macro_rules! log {
         .open(path)
         .unwrap();
 
-        let log_line = format!("{}: {}\n", chrono::Local::now().format("%H:%M:%S").to_string(), format!($($arg)*));
+        let log_line = format!("{}: {}: {}\n", chrono::Local::now().format("%H:%M:%S").to_string(), std::thread::current().name().unwrap_or("Unknown"), format!($($arg)*));
 
         std::io::Write::write_all(&mut file, log_line.as_bytes()).unwrap();
     };

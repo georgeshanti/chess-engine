@@ -1,4 +1,4 @@
-const PRESENCE_BITS: u8 = 0b1 << 7;
+pub const PRESENCE_BITS: u8 = 0b1 << 7;
 pub const EMPTY: u8 = 0b0 << 7;
 pub const PRESENT: u8 = 0b1 << 7;
 
@@ -6,7 +6,7 @@ pub fn get_presence(b: u8) -> u8 {
     b & PRESENCE_BITS
 }
 
-const COLOR_BITS: u8 = 0b1 << 6;
+pub const COLOR_BITS: u8 = 0b1 << 6;
 pub const WHITE: u8 = 0b0 << 6;
 pub const BLACK: u8 = 0b1 << 6;
 
@@ -18,7 +18,7 @@ pub fn negate_color(b: u8) -> u8 {
     b ^ COLOR_BITS
 }
 
-const TYPE_BITS: u8 = 0b111 << 3;
+pub const TYPE_BITS: u8 = 0b111 << 3;
 pub const PAWN: u8 = 0b001 << 3;
 pub const ROOK: u8 = 0b010 << 3;
 pub const KNIGHT: u8 = 0b011 << 3;

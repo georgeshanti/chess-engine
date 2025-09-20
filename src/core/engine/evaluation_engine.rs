@@ -72,18 +72,20 @@ pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App) {
 
                 let mut next_boards: Vec<(Option<Board>, Board, usize)> = Vec::new();
                 headless!("Inserting next boards");
-                for next_board in evaluated_board_state.1 {
-                    // match positions.read().unwrap().get(&next_board) {
-                    //     None => {
-                    //         next_boards.push((Some(board), next_board, board_depth + 1));
-                    //     },
-                    //     Some(board_state) => {
-                    //         append_parent(board_state, &previous_board, &positions_to_reevaluate);
-                    //     }
-                    // }
-                    next_boards.push((Some(board), next_board, board_depth + 1));
+                if board_depth < 6 {
+                    for next_board in evaluated_board_state.1 {
+                        // match positions.read().unwrap().get(&next_board) {
+                        //     None => {
+                        //         next_boards.push((Some(board), next_board, board_depth + 1));
+                        //     },
+                        //     Some(board_state) => {
+                        //         append_parent(board_state, &previous_board, &positions_to_reevaluate);
+                        //     }
+                        // }
+                        next_boards.push((Some(board), next_board, board_depth + 1));
+                    }
+                    positions_to_evaluate.queue(next_boards);
                 }
-                positions_to_evaluate.queue(next_boards);
 
                 // println!("Evaluation engine inserted");
             },

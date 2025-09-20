@@ -12,3 +12,5 @@ pub mod set;
 pub mod log;
 
 pub mod engine;
+
+pub mod bitwise_operations;

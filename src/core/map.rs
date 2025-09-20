@@ -1,6 +1,6 @@
 use std::{collections::{HashMap, HashSet}, sync::{Arc, RwLock}};
 
-use crate::{core::{board::Board, board_state::BoardState, piece::*}, headless};
+use crate::{core::{bitwise_operations::and_byte, board::Board, board_state::BoardState, piece::*}, headless};
 
 #[derive(PartialEq, Eq, Hash, Clone)]
 pub struct BoardPieces {
@@ -35,10 +35,14 @@ fn get_board_pieces(board: &Board) -> BoardPieces {
         whiteKings: 0,
     };
 
-    for piece in board.pieces {
-        if get_presence(piece) == PRESENT {
-            let is_black = get_color(piece) == BLACK;
-            match get_type(piece) {
+    let presense_board = and_byte(board.pieces, PRESENCE_BITS);
+    let color_board = and_byte(board.pieces, COLOR_BITS);
+    let type_board = and_byte(board.pieces, TYPE_BITS);
+
+    for i in 0..64 {
+        if presense_board[i] == PRESENT {
+            let is_black = color_board[i] == BLACK;
+            match type_board[i] {
                 PAWN => {
                     if is_black {
                         board_pieces.blackPawns += 1;

@@ -3,8 +3,11 @@ use std::fmt::Display;
 use std::sync::Arc;
 use std::sync::RwLock;
 
+use crate::core::bitwise_operations::and_byte;
+use crate::core::bitwise_operations::xor_byte;
 use crate::core::piece::*;
 use crate::core::board_state::*;
+use crate::log;
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Board {
@@ -57,6 +60,7 @@ impl Board {
     }
 
     pub fn inverted(self: &Self) -> Self {
+        // Board{pieces: xor_byte(self.pieces, COLOR_BITS)}
         let mut new_board = Board::new();
         for i in 0..64 {
             if get_presence(self.pieces[i]) == PRESENT {
@@ -79,23 +83,34 @@ impl Board {
     #[inline(never)]
     pub fn find_moves(self: &Self) -> Vec<Board> {
         let mut moves = Vec::new();
+        let presence_board = Board {pieces: and_byte(self.pieces, PRESENCE_BITS)};
+        let color_board = Board {pieces: and_byte(self.pieces, COLOR_BITS)};
+        let type_board = Board {pieces: and_byte(self.pieces, TYPE_BITS)};
         for i in 0..64 {
-            let piece = self.pieces[i];
-            if get_presence(piece) == EMPTY || get_color(piece) == BLACK {
+            if presence_board.pieces[i] == EMPTY || color_board.pieces[i] == BLACK {
                 continue;
             }
+            // if get_presence(piece) == EMPTY || get_color(piece) == BLACK {
+            //     continue;
+            // }
             let rank = i / 8;
             let file = i % 8;
-            let source_piece = self.pieces[i];
-            match get_type(source_piece) {
+            // match type_board {
+            //     Some(_) => {}
+            //     None => {
+            //         type_board = Some(Board {pieces: and_byte(self.pieces, TYPE_BITS)});
+            //     }
+            // };
+            match type_board.pieces[i] {
+            // match get_type(source_piece) {
                 PAWN => {
-                    if rank<7 && get_presence(self.get(rank+1, file)) == EMPTY {
+                    if rank<7 && presence_board.get(rank+1, file) == EMPTY {
                         let mut new_board = self.clone();
                         new_board.set(rank, file, EMPTY);
                         new_board.set(rank+1, file, PRESENT | WHITE | PAWN | HAS_NOT_MOVED_TWO_SQUARES);
                         moves.push(new_board);
 
-                        if rank<6 && get_presence(self.get(rank+2, file)) == EMPTY {
+                        if rank<6 && presence_board.get(rank+2, file) == EMPTY {
                             let mut new_board = self.clone();
                             new_board.set(rank, file, EMPTY);
                             new_board.set(rank+2, file, PRESENT | WHITE | PAWN | HAS_MOVED_TWO_SQUARES);
@@ -106,8 +121,9 @@ impl Board {
                         let destination: (i8, i8) = diagonal.add((rank as i8, file as i8));
                         if (0<=destination.0) && (destination.0<8) && 0<=destination.1 && destination.1<8 {
                             let destination = destination.as_usize();
-                            let target_piece = self.get(destination.0, destination.1);
-                            if get_presence(target_piece) == PRESENT && get_color(target_piece) == BLACK {
+                            let target_piece_presence = presence_board.get(destination.0, destination.1);
+                            let target_piece_color = color_board.get(destination.0, destination.1);
+                            if target_piece_presence == PRESENT && target_piece_color == BLACK {
                                 let mut new_board = self.clone();
                                 new_board.set(rank, file, EMPTY);
                                 new_board.set(destination.0, destination.1, PRESENT | WHITE | PAWN | HAS_NOT_MOVED_TWO_SQUARES);
@@ -117,12 +133,12 @@ impl Board {
                     }
                 },
                 ROOK | BISHOP | QUEEN | KNIGHT | KING => {
-                    let max_distance: i8 = match get_type(source_piece) {
+                    let max_distance: i8 = match type_board.pieces[i] {
                         ROOK | BISHOP | QUEEN => 8,
                         KNIGHT | KING => 2,
                         _ => panic!("Not a valid type")
                     };
-                    let directions = match get_type(source_piece) {
+                    let directions = match type_board.pieces[i] {
                         ROOK => &ROOK_DIRECTIONS[..],
                         BISHOP => &BISHOP_DIRECTIONS[..],
                         QUEEN | KING => &QUEEN_DIRECTIONS[..],
@@ -137,18 +153,23 @@ impl Board {
                                 let destination: (i8, i8) = direction.multiply(distance).add((rank as i8, file as i8));
                                 if (0<=destination.0) && (destination.0<8) && 0<=destination.1 && destination.1<8 {
                                     let destination = destination.as_usize();
-                                    let piece = self.get(destination.0, destination.1);
-                                    if get_presence(piece) == EMPTY {
+                                    let piece_presence = presence_board.get(destination.0, destination.1);
+                                    let piece_color = color_board.get(destination.0, destination.1);
+                                    if piece_presence == EMPTY {
+                                        if type_board.pieces[i] == KNIGHT {
+                                        }
                                         let mut new_board = self.clone();
                                         new_board.set(rank, file, EMPTY);
-                                        new_board.set(destination.0, destination.1, PRESENT | WHITE | get_type(source_piece));
+                                        new_board.set(destination.0, destination.1, PRESENT | WHITE | type_board.pieces[i]);
                                         moves.push(new_board);
                                     } else {
                                         can_move_in_directions[direction_idx] = false;
-                                        if get_color(piece) == BLACK {
+                                        if piece_color == BLACK {
+                                            if type_board.pieces[i] == KNIGHT {
+                                            }
                                             let mut new_board = self.clone();
                                             new_board.set(rank, file, EMPTY);
-                                            new_board.set(destination.0, destination.1, PRESENT | WHITE | get_type(source_piece));
+                                            new_board.set(destination.0, destination.1, PRESENT | WHITE | type_board.pieces[i]);
                                             moves.push(new_board);
                                         }
                                     }
@@ -196,7 +217,13 @@ impl Board {
                         let piece = self.get(destination.0, destination.1);
                         if get_presence(piece) == PRESENT {
                             if get_color(piece) == WHITE {
-                                return true;
+                                if ROOK_DIRECTIONS.contains(&direction) && get_type(piece) == ROOK {
+                                    return true;
+                                } else if BISHOP_DIRECTIONS.contains(&direction) && get_type(piece) == BISHOP {
+                                    return true;
+                                } else if get_type(piece) == QUEEN {
+                                    return true;
+                                }
                             } else {
                                 break;
                             }

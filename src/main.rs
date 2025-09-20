@@ -1,9 +1,8 @@
 mod core;
 
 use std::{sync::{Arc, Mutex, RwLock}, thread::JoinHandle, time::Duration};
-use ratatui::{crossterm::event::{read, Event, KeyCode}, layout::{Alignment, Constraint, Direction, Layout, Margin, Rect}, widgets::{Block, Borders, Paragraph}, DefaultTerminal, Frame};
+use ratatui::{crossterm::event::{read, poll, Event, KeyCode}, layout::{Alignment, Constraint, Direction, Layout, Margin, Rect}, widgets::{Block, Borders, Paragraph}, DefaultTerminal, Frame};
 use regex::Regex;
-use crossterm::event::{poll};
 use thousands::Separable;
 use tui_input::{backend::crossterm::EventHandler, Input};
 
@@ -51,6 +50,9 @@ fn main() {
         let mut file_name = FILENAME.write().unwrap();
         *file_name = f;
     }
+
+    // scratch();
+    // return;
 
     log!("Hello, world!");
     let thread_count = std::thread::available_parallelism().unwrap().get();
@@ -171,14 +173,13 @@ impl App {
                     };
                 }
             } else {
-                log!("Timeout expired. No event.");
+                // log!("Timeout expired. No event.");
             }
         }
     }
 
     fn draw(&mut self, frame: &mut Frame) {
-        // println!("Drawing");
-        let _unused = self.run_lock.write().unwrap();
+        // let _unused = self.run_lock.write().unwrap();
         let thread_count = self.thread_stats.len();
         let vertical_panes = Layout::default()
             .direction(Direction::Horizontal)
@@ -287,7 +288,7 @@ impl App {
             let source_piece = current_board.get(from_rank, from_file);
             let target_piece = current_board.get(to_rank, to_file);
 
-            log!("from_file: {}, from_rank: {}, to_file: {}, to_rank: {}", from_file, from_rank, to_file, to_rank);
+            log!("Processing prompt: from_file: {}, from_rank: {}, to_file: {}, to_rank: {}", from_file, from_rank, to_file, to_rank);
 
             if get_presence(source_piece) == EMPTY || get_color(source_piece) == BLACK || !(get_presence(target_piece) == EMPTY || get_color(target_piece) == BLACK) {
                 log!("{}, {}, {}, {}. Syntax error.", get_presence(source_piece) == EMPTY, get_color(source_piece) == BLACK, get_presence(target_piece) == EMPTY, get_color(target_piece) == BLACK);
@@ -296,15 +297,20 @@ impl App {
                 return;
             }
 
+            log!("Processing prompt: Valid pieces present in source and target squares");
+            log!("Processing prompt: current_board: {:?} \n{}", current_board.pieces, current_board);
             let next_board = {
                 let current_board_state = self.positions.get(&*current_board);
                 if let Some(board_state) = current_board_state {
+                    log!("Processing prompt: Found board state for current position");
+
                     let board_state = board_state.read().unwrap();
     
                     let mut next_board: Option<Board> = None;
                     for next_move in board_state.next_moves.iter() {
                         let source_piece = next_move.get(7-from_rank, 7-from_file);
                         let target_piece = next_move.get(7-to_rank, 7-to_file);
+                        log!("Processing prompt: candidate:\n{}", next_move.inverted());
                         if get_presence(source_piece) == EMPTY && get_presence(target_piece) == PRESENT && get_color(target_piece) == BLACK {
                             next_board = Some(*next_move);
                             break;
@@ -313,12 +319,14 @@ impl App {
                     match next_board {
                         Some(next_board) => next_board,
                         None => {
+                            log!("Processing prompt: Could not find move corresponding to prompt");
                             self.prompt = String::from("Invalid move 2. Enter move:");
                             input.reset();
                             return;
                         }
                     }
                 } else {
+                    log!("Processing prompt: Could not find board state for current position");
                     self.prompt = String::from("Invalid move 3. Enter move:");
                     input.reset();
                     return;
@@ -333,11 +341,13 @@ impl App {
                         let next_best_move = next_board_state.next_best_move.read().unwrap();
                         match *next_best_move {
                             None => {
+                                log!("Processing prompt: No next best move found for entered move's position");
                                 self.prompt = String::from("Have not evaluated position yet. Enter move:");
                                 input.reset();
                                 return;
                             }
                             Some(next_best_move) => {
+                                log!("Processing prompt: Setting current board to {}", next_best_move.board);
                                 log!("Setting current board to {}", next_best_move.board);
                                 *current_board = next_best_move.board;
                                 input.reset();
@@ -347,6 +357,7 @@ impl App {
                     None => {
                         // println!("Positions: {}", positions.len());
                         // println!("Depth: {}", DEPTH.lock().unwrap());
+                        log!("Processing prompt: Could not find board state for entered move's position");
                         self.prompt = String::from("Have not evaluated position yet. Enter move:");
                         input.reset();
                         return;
@@ -384,5 +395,13 @@ impl App {
         // }
         // return;
         loop {}
+    }
+}
+
+fn scratch() {
+    let board = Board{pieces: [144, 152, 160, 168, 176, 160, 152, 144, 136, 136, 136, 0, 0, 136, 136, 136, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 136, 216, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 200, 200, 200, 200, 200, 200, 200, 200, 208, 216, 224, 232, 240, 224, 0, 208]};
+    let t = board.get_evaluation();
+    for n in t.1.iter()  {
+        println!("{}", n.inverted());
     }
 }
