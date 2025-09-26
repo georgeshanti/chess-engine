@@ -1,6 +1,6 @@
 use std::sync::{Arc, RwLock};
 
-use crate::{core::{board::Board, board_state::BoardState, engine::structs::PositionsToReevaluate, map::Presence}, headless, App};
+use crate::{core::{board::Board, board_state::BoardState, engine::structs::{PositionToEvaluate, PositionsToReevaluate}, map::Presence}, headless, App};
 
 pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App) {
     // while time elapsed is less than 10 seconds
@@ -34,7 +34,7 @@ pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App) {
             *(app.thread_stats[index].running_status.write().unwrap()) = true;
         }
         // println!("Evaluation engine running");
-        let (previous_board, board, board_depth) = positions_to_evaluate.dequeue(index);
+        let (previous_board, board, board_depth) = positions_to_evaluate.dequeue(index).value;
         headless!("Got board");
         // println!("Evaluation engine dequeued: {}", engine_id);
         headless!("Checking if board is present");
@@ -70,7 +70,7 @@ pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App) {
                 drop(writable_board_state);
                 headless!("Dropped writable board state");
 
-                let mut next_boards: Vec<(Option<Board>, Board, usize)> = Vec::new();
+                let mut next_boards: Vec<PositionToEvaluate> = Vec::new();
                 headless!("Inserting next boards");
                 if board_depth < 6 {
                     for next_board in evaluated_board_state.1 {
@@ -82,7 +82,7 @@ pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App) {
                         //         append_parent(board_state, &previous_board, &positions_to_reevaluate);
                         //     }
                         // }
-                        next_boards.push((Some(board), next_board, board_depth + 1));
+                        next_boards.push(PositionToEvaluate{ value: (Some(board), next_board, board_depth + 1) });
                     }
                     positions_to_evaluate.queue(next_boards);
                 }

@@ -11,7 +11,7 @@ pub fn reevaluation_engine(run_lock: Arc<RwLock<()>>, positions_to_reevaluate: P
     loop {
         let _unused = run_lock.read().unwrap();
         // println!("Reeval running");
-        let board_to_reevaluate = positions_to_reevaluate.pop();
+        let board_to_reevaluate = positions_to_reevaluate.pop_last();
 
         if let Some(board_state) = positions.get(&board_to_reevaluate) {
             let board_state = board_state.read().unwrap();
