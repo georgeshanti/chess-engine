@@ -42,6 +42,15 @@ impl Evaluation {
             PositionResult::Loss => Evaluation{result: PositionResult::Win, score: self.score+1},
         }
     }
+
+    pub fn get_score(&self) -> i32 {
+        match self.result {
+            PositionResult::Win => 99,
+            PositionResult::Scored => self.score,
+            PositionResult::Draw => 0,
+            PositionResult::Loss => -99,
+        }
+    }
 }
 
 pub struct BoardState {

@@ -6,7 +6,7 @@ use regex::Regex;
 use thousands::Separable;
 use tui_input::{backend::crossterm::EventHandler, Input};
 
-use crate::core::{board::*, engine::{evaluation_engine::*, reevaluation_engine::*, structs::{PositionToEvaluate, PositionsToEvaluate, PositionsToReevaluate}}, initial_board::*, log::FILENAME, map::Positions, piece::*, queue::*, set::Set};
+use crate::core::{board::{self, *}, engine::{evaluation_engine::*, reevaluation_engine::*, structs::{PositionToEvaluate, PositionsToEvaluate, PositionsToReevaluate}}, initial_board::*, log::FILENAME, map::Positions, piece::*, queue::*, set::Set};
 
 fn prune_engine(run_lock: Arc<RwLock<()>>, positions: Positions, positions_to_evaluate: PositionsToEvaluate, root_board: Board) {
     let _unused = run_lock.write().unwrap();
@@ -181,71 +181,98 @@ impl App {
     fn draw(&mut self, frame: &mut Frame) {
         // let _unused = self.run_lock.write().unwrap();
         let thread_count = self.thread_stats.len();
-        let vertical_panes = Layout::default()
+        let [left_pane, right_pane] = Layout::default()
             .direction(Direction::Horizontal)
             .constraints(vec![
                 Constraint::Percentage(50),
                 Constraint::Percentage(50),
             ])
-            .split(frame.area());
-        let status_panes = Layout::default()
+            .split(frame.area()).as_ref().try_into().unwrap();
+        let [global_status_pane, thread_status_pane] = Layout::default()
             .direction(Direction::Vertical)
-            .constraints(vec![Constraint::Length(3), Constraint::Fill(1)])
-            .split(vertical_panes[1].inner(Margin::new(1, 1)));
+            .constraints(vec![Constraint::Length(4), Constraint::Fill(1)])
+            .split(right_pane.inner(Margin::new(1, 1))).as_ref().try_into().unwrap();
 
-        let left_panes = Layout::default()
+        let [board_pane, prompt_pane] = Layout::default()
             .direction(Direction::Vertical)
             .constraints(vec![
                 Constraint::Fill(1),
                 Constraint::Length(3),
             ])
-            .split(vertical_panes[0]);
+            .split(left_pane).as_ref().try_into().unwrap();
 
         let status_pane = Layout::default()
             .direction(Direction::Vertical)
             .constraints(vec![Constraint::Length(4); thread_count])
-            .split(status_panes[1].inner(Margin::new(1, 1)));
+            .split(thread_status_pane.inner(Margin::new(1, 1)));
 
-        frame.render_widget(Block::default().borders(Borders::ALL), left_panes[0]);
-        frame.render_widget(Block::default().borders(Borders::ALL), left_panes[1]);
-        frame.render_widget(Block::default().borders(Borders::ALL), vertical_panes[1]);
+        frame.render_widget(Block::default().borders(Borders::ALL), board_pane);
+        frame.render_widget(Block::default().borders(Borders::ALL), prompt_pane);
+        frame.render_widget(Block::default().borders(Borders::ALL), right_pane);
         
         for i in 0..self.thread_stats.len() {
             App::draw_stat(frame, i, &self.thread_stats[i], status_pane[i]);
         }
 
-        frame.render_widget(Paragraph::new(format!("{}", self.current_board.lock().unwrap())), left_panes[0].inner(Margin::new(1, 1)));
-        frame.render_widget(Block::default().borders(Borders::ALL), left_panes[1]);
-        frame.render_widget(Paragraph::new(self.prompt.clone()), left_panes[1].inner(Margin::new(1, 0)));
-        frame.render_widget(Paragraph::new(format!("{}", self.input.read().unwrap().value())), left_panes[1].inner(Margin::new(1, 1)));
+        frame.render_widget(Paragraph::new(format!("{}", self.current_board.lock().unwrap())), board_pane.inner(Margin::new(1, 1)));
+        frame.render_widget(Block::default().borders(Borders::ALL), prompt_pane);
+        frame.render_widget(Paragraph::new(self.prompt.clone()), prompt_pane.inner(Margin::new(1, 0)));
+        frame.render_widget(Paragraph::new(format!("{}", self.input.read().unwrap().value())), prompt_pane.inner(Margin::new(1, 1)));
 
         // frame.render_widget(Block::default().borders(Borders::ALL), vertical_panes[1]);
         // frame.render_widget(Block::default().borders(Borders::ALL), vertical_panes[0]);
 
-        let queue_panes = Layout::default()
+        let [queue_stat_pane, board_pieces_pane, positions_evaluated_pane, positions_evaluated_pseudo_pane] = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints(vec![Constraint::Length(1); 4])
+            .split(global_status_pane).as_ref().try_into().unwrap();
+
+        let [queue_stat_name_pane, queue_stat_value_pane] = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints(vec![Constraint::Fill(1); 2])
-            .split(status_panes[0]);
-        let left_queue_panes = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints(vec![Constraint::Length(1); 4])
-            .split(queue_panes[0]);
-        let right_queue_panes = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints(vec![Constraint::Length(1); 4])
-            .split(queue_panes[1]);
-        frame.render_widget(Paragraph::new("Queue:"), left_queue_panes[0]);
-        frame.render_widget(Paragraph::new(format!("{}", 0.separate_with_commas())).alignment(Alignment::Right), right_queue_panes[0]);
-        frame.render_widget(Paragraph::new("Board Pieces:"), left_queue_panes[1]);
+            .constraints(vec![Constraint::Percentage(50); 2])
+            .split(queue_stat_pane).as_ref().try_into().unwrap();
+        let [board_pieces_name_pane, board_pieces_value_pane] = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints(vec![Constraint::Percentage(50); 2])
+            .split(board_pieces_pane).as_ref().try_into().unwrap();
+        let [positions_evaluated_name_pane, positions_evaluated_value_pane] = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints(vec![Constraint::Percentage(50); 2])
+            .split(positions_evaluated_pane).as_ref().try_into().unwrap();
+        let [positions_evaluated_pseudo_name_pane, positions_evaluated_pseudo_value_pane] = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints(vec![Constraint::Percentage(50); 2])
+            .split(positions_evaluated_pseudo_pane).as_ref().try_into().unwrap();
+
+        frame.render_widget(Paragraph::new("Queue:"), queue_stat_name_pane);
+        let queue_length = {
+            let mut queue_length = String::from("{");
+            let mut count = 0;
+            for (depth, queue) in self.positions_to_evaluate.queues.read().unwrap().iter() {
+                let sub_queue_length = queue.length.read().unwrap();
+                if *sub_queue_length > 0 {
+                    queue_length += format!("{}: {}, ", depth, sub_queue_length.separate_with_commas()).as_str();
+                    count += 1;
+                }
+                if count > 5 {
+                    break;
+                }
+            }
+            queue_length += "}";
+            queue_length
+        };
+        frame.render_widget(Paragraph::new(queue_length), queue_stat_value_pane);
+
+        frame.render_widget(Paragraph::new("Board Pieces:"), board_pieces_name_pane);
         let len = {
             self.positions.map.read().unwrap().len()
         };
-        frame.render_widget(Paragraph::new(format!("{}", len.separate_with_commas())).alignment(Alignment::Right), right_queue_panes[1]);
-        frame.render_widget(Paragraph::new("Positions evaluated:"), left_queue_panes[2]);
-        frame.render_widget(Paragraph::new(format!("{}", self.positions.len().separate_with_commas())).alignment(Alignment::Right), right_queue_panes[2]);
-        frame.render_widget(Paragraph::new("Positions evaluated pseudo:"), left_queue_panes[3]);
-        frame.render_widget(Paragraph::new(format!("{}", self.positions_evaluated_acount.read().unwrap().separate_with_commas())).alignment(Alignment::Right), right_queue_panes[3]);
-        frame.render_widget(Paragraph::new(format!("Engine status: {}", self.frame_count)), vertical_panes[1]);
+        frame.render_widget(Paragraph::new(format!("{}", len.separate_with_commas())).alignment(Alignment::Right), board_pieces_value_pane);
+        frame.render_widget(Paragraph::new("Positions evaluated:"), positions_evaluated_name_pane);
+        frame.render_widget(Paragraph::new(format!("{}", self.positions.len().separate_with_commas())).alignment(Alignment::Right), positions_evaluated_value_pane);
+        frame.render_widget(Paragraph::new("Positions evaluated pseudo:"), positions_evaluated_pseudo_name_pane);
+        frame.render_widget(Paragraph::new(format!("{}", self.positions_evaluated_acount.read().unwrap().separate_with_commas())).alignment(Alignment::Right), positions_evaluated_pseudo_value_pane);
+        frame.render_widget(Paragraph::new(format!("Engine status: {}", self.frame_count)), right_pane);
         self.frame_count = self.frame_count + 1;
     }
 
@@ -369,7 +396,7 @@ impl App {
     }
 
     fn run_engine(&self, thread_count: usize) {
-        self.positions_to_evaluate.queue(vec![PositionToEvaluate{ value: (None, INITIAL_BOARD, 0) }]);
+        self.positions_to_evaluate.queue(vec![PositionToEvaluate{ value: (None, INITIAL_BOARD, 0, 0) }]);
         
         let mut threads: Vec<JoinHandle<()>> = Vec::new();
         // println!("Starting {} threads", cpu_count);

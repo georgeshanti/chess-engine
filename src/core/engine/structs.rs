@@ -2,12 +2,18 @@ use std::{collections::HashSet, sync::{Arc, Mutex}};
 
 use crate::core::{board::Board, queue::{DistributedQueue}, set::Set};
 
-pub type PositionsToEvaluate = DistributedQueue<PositionToEvaluate>;
+pub type PositionsToEvaluate = DistributedQueue;
 pub type PositionsToReevaluate = Set<Board>;
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub struct PositionToEvaluate {
-    pub value: (Option<Board>, Board, usize)
+    pub value: (Option<Board>, Board, usize, i32)
+}
+
+impl PositionToEvaluate {
+    pub fn get_weight(&self) -> i32 {
+        (self.value.2 as i32) - self.value.3
+    }
 }
 
 impl PartialOrd for PositionToEvaluate {
