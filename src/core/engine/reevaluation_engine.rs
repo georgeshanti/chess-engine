@@ -11,7 +11,7 @@ pub fn reevaluation_engine(run_lock: Arc<RwLock<()>>, positions_to_reevaluate: P
     loop {
         let _unused = run_lock.read().unwrap();
         // println!("Reeval running");
-        let board_to_reevaluate = positions_to_reevaluate.pop_last();
+        let board_to_reevaluate = positions_to_reevaluate.dequeue();
 
         if let Some(board_state) = positions.get(&board_to_reevaluate) {
             let board_state = board_state.read().unwrap();
@@ -54,7 +54,7 @@ pub fn reevaluation_engine(run_lock: Arc<RwLock<()>>, positions_to_reevaluate: P
                     for previous_board in board_state.previous_moves.read().unwrap().iter() {
                         previous_boards.push(*previous_board);
                     }
-                    positions_to_reevaluate.add(previous_boards);
+                    positions_to_reevaluate.queue(previous_boards);
                 } else {
                     // println!("Not updating best move #1");
                 }

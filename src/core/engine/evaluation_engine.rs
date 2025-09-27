@@ -35,7 +35,6 @@ pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App) {
         }
         // println!("Evaluation engine running");
         for position in positions_to_evaluate.dequeue(index) {
-            sleep(std::time::Duration::from_millis(10));
             let (previous_board, board, board_depth, _) = position.value;
             headless!("Got board");
             // println!("Evaluation engine dequeued: {}", engine_id);
@@ -68,7 +67,7 @@ pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App) {
                                 writable_board_state.previous_moves.write().unwrap().insert(previous_board);
                             }
                             {
-                                positions_to_reevaluate.add(vec![previous_board]);
+                                positions_to_reevaluate.queue(vec![previous_board]);
                             }
                         },
                         _ => {}
@@ -117,7 +116,7 @@ fn append_parent(board_state: &Arc<RwLock<BoardState>>, previous_board: &Option<
                 for previous_board in writable_board_state.previous_moves.read().unwrap().iter() {
                     previous_boards.push(*previous_board);
                 }
-                positions_to_reevaluate.add(previous_boards);
+                positions_to_reevaluate.queue(previous_boards);
             }
         },
         _ => {}

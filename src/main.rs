@@ -60,7 +60,7 @@ fn main() {
     let mut app = App {
         positions: Positions::new(),
         positions_to_evaluate: DistributedQueue::new(thread_count),
-        positions_to_reevaluate: Set::new(),
+        positions_to_reevaluate: Queue::new(),
         run_lock:  Arc::new(RwLock::new(())),
         current_board: Arc::new(Mutex::new(INITIAL_BOARD)),
         thread_stats: Vec::with_capacity(thread_count),
