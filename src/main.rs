@@ -248,10 +248,10 @@ impl App {
         let queue_length = {
             let mut queue_length = String::from("{");
             let mut count = 0;
-            for (depth, queue) in self.positions_to_evaluate.queues.read().unwrap().iter() {
+            for queue in self.positions_to_evaluate.queues.iter() {
                 let sub_queue_length = queue.length.read().unwrap();
                 if *sub_queue_length > 0 {
-                    queue_length += format!("{}: {}, ", depth, sub_queue_length.separate_with_commas()).as_str();
+                    queue_length += format!("{}: {}, ", 0, sub_queue_length.separate_with_commas()).as_str();
                     count += 1;
                 }
                 if count > 5 {

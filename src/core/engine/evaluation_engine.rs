@@ -34,7 +34,8 @@ pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App) {
             *(app.thread_stats[index].running_status.write().unwrap()) = true;
         }
         // println!("Evaluation engine running");
-        for position in positions_to_evaluate.dequeue(index) {
+        let position = positions_to_evaluate.dequeue(index);
+        // for position in positions_to_evaluate.dequeue(index) {
             let (previous_board, board, board_depth, _) = position.value;
             headless!("Got board");
             // println!("Evaluation engine dequeued: {}", engine_id);
@@ -100,7 +101,7 @@ pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App) {
                     append_parent(&value, &previous_board, &positions_to_reevaluate);
                 },
             }
-        }
+        // }
         // println!("Evaluation engine completed: {}", engine_id);
     }
     // println!("Evaluation engine completed");

@@ -1,64 +1,62 @@
-use std::{collections::{BTreeMap, HashMap, HashSet}, sync::{Arc, Condvar, Mutex, RwLock}, thread::sleep, time::Duration};
+use std::{collections::HashSet, sync::{Arc, Condvar, Mutex, RwLock}};
 
-use crate::core::{board::Board, engine::structs::PositionToEvaluate};
+use crate::core::board::Board;
 
 #[derive(Clone)]
-pub struct DistributedQueue {
-    pub queues: Arc<RwLock<BTreeMap<usize, Queue<PositionToEvaluate>>>>,
+pub struct DistributedQueue<T> {
+    pub size: usize,
+    pub current_node: Arc<Mutex<usize>>,
+    pub queues: Vec<Queue<T>>,
 }
 
-impl DistributedQueue {
+impl<T> DistributedQueue<T> {
 
     pub fn new(size: usize) -> Self {
         let mut queue = DistributedQueue {
-            queues: Arc::new(RwLock::new(BTreeMap::new())),
+            size,
+            current_node: Arc::new(Mutex::new(0)),
+            queues: Vec::with_capacity(size),
         };
+        for _ in 0..size {
+            queue.queues.push(Queue::new());
+        }
         return queue;
     }
 
-    pub fn queue(&self, value: Vec<PositionToEvaluate>) {
-        if value.is_empty() {
-            return;
-        }
-        let queue = {
-            let readable_queues= self.queues.read().unwrap();
-            let depth = value[0].value.2;
-            let depth_entry = readable_queues.get(&depth);
-            match depth_entry {
-                Some(queue) => {
-                    let queue = queue.clone();
-                    drop(readable_queues);
-                    queue
-                },
-                None => {
-                    drop(readable_queues);
-                    let mut writable_queues = self.queues.write().unwrap();
-
-                    let depth_entry = writable_queues.get(&depth);
-                    match depth_entry {
-                        Some(queue) => queue.clone(),
-                        None => {
-                            let new_queue = Queue::new();
-                            writable_queues.insert(depth, new_queue.clone());
-                            new_queue
+    pub fn queue(&self, value: Vec<T>) {
+        // let current_node = {
+        //     let mut current_node = self.current_node.lock().unwrap();
+        //     let index_to_queue_to = *current_node;
+        //     *current_node = (*current_node + 1) % self.size;
+        //     index_to_queue_to
+        // };
+        let current_node = {
+            let mut shortest_queue_length: Option<usize> = None;
+            let mut shortest_queue_length_index = 0;
+            for i in 0..self.queues.len() {
+                let queue_length = {
+                    *(self.queues[i].length.read().unwrap())
+                };
+                match shortest_queue_length {
+                    None => {
+                        shortest_queue_length = Some(queue_length);
+                        shortest_queue_length_index = i;
+                    }
+                    Some(value) => {
+                        if queue_length < value {
+                            shortest_queue_length = Some(queue_length);
+                            shortest_queue_length_index = i;
                         }
                     }
                 }
             }
+            shortest_queue_length_index
         };
-        queue.queue(value);
+        self.queues[current_node].queue(value);
     }
 
-    pub fn dequeue(&self, i: usize) -> Vec<PositionToEvaluate> {
-        loop {
-            for (_, queue) in self.queues.read().unwrap().iter() {
-                let value = queue.non_blocking_dequeue();
-                if let Some(value) = value {
-                    return value;
-                }
-            }
-            sleep(Duration::from_millis(100));
-        }
+    pub fn dequeue(&self, i: usize) -> T {
+        self.queues[i].dequeue()
     }
 }
 
@@ -77,7 +75,7 @@ pub struct Queue<T> {
     pub length: Arc<RwLock<usize>>,
 }
 
-impl<T: Clone> Queue<T> {
+impl<T> Queue<T> {
     pub fn new() -> Self {
         Queue {
             head: Arc::new(Mutex::new(Arc::new(Mutex::new(None)))),
@@ -123,39 +121,6 @@ impl<T: Clone> Queue<T> {
             let mut head_pointer = self.head.lock().unwrap();
             *head_pointer = new_node.clone();
             self.waiter.notify_all();
-        }
-    }
-
-    pub fn non_blocking_dequeue(&self) -> Option<Vec<T>> {
-        let mut head_pointer = self.head.lock().unwrap();
-        // let start = SystemTime::now();
-        let mut head = head_pointer.lock().unwrap();
-        if head.is_none() {
-            return None;
-        } else {
-            let head_node = head.as_mut().unwrap();
-            let value = head_node.value.clone();
-
-            let next = head_node.next.clone();
-            drop(head);
-            *head_pointer = next.clone();
-
-            let next_guard = next.lock().unwrap();
-            if next_guard.is_none() {
-                let mut tail_pointer = self.tail.lock().unwrap();
-                *tail_pointer = next.clone();
-            }
-    
-            // let end = SystemTime::now();
-            // let elapsed = end.duration_since(start).unwrap().as_nanos();
-            // if elapsed > 0 {
-            //     println!("it took {}ns", elapsed);
-            // }
-            {
-                let mut length = self.length.write().unwrap();
-                *length = *length - value.len();
-            }
-            Some(value)
         }
     }
 
