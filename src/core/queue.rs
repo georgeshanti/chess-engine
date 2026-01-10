@@ -1,4 +1,4 @@
-use std::{collections::HashSet, sync::{Arc, Condvar, Mutex, RwLock}};
+use std::{collections::HashSet, sync::{Arc, Condvar, Mutex, MutexGuard, RwLock}};
 
 use crate::core::board::Board;
 
@@ -75,6 +75,10 @@ pub struct Queue<T> {
     pub length: Arc<RwLock<usize>>,
 }
 
+fn lock_tail<'a, T>(m: &'a Arc<Mutex<Arc<Mutex<Option<QueueNode<T>>>>>>) -> MutexGuard<'a, Arc<Mutex<Option<QueueNode<T>>>>> {
+    m.lock().unwrap()
+}
+
 impl<T> Queue<T> {
     pub fn new() -> Self {
         Queue {
@@ -86,6 +90,10 @@ impl<T> Queue<T> {
         }
     }
 
+    pub fn t_queue(&self, value: Vec<T>) {
+        self.queue(value);
+    }
+
     pub fn queue(&self, value: Vec<T>) {
         if value.is_empty() {
             return;
@@ -94,7 +102,7 @@ impl<T> Queue<T> {
         let new_node = Arc::new(Mutex::new(Some(QueueNode { value, next: Arc::new(Mutex::new(None)) })));
 
         let mut should_update_head = false;
-        let mut tail_pointer = self.tail.lock().unwrap();
+        let mut tail_pointer = lock_tail(&self.tail);
         {
             let mut tail = tail_pointer.lock().unwrap();
 

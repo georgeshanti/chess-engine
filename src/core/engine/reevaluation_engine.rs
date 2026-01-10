@@ -1,17 +1,17 @@
-use std::{cmp::Ordering, sync::{Arc, RwLock}};
+use std::{cmp::Ordering, sync::{Arc, RwLock, mpsc::{Receiver, Sender}}};
 
 use crate::core::{board::Board, board_state::NextBestMove, engine::structs::PositionsToReevaluate, map::Positions, queue::*};
 
 
 
-pub fn reevaluation_engine(run_lock: Arc<RwLock<()>>, positions_to_reevaluate: PositionsToReevaluate, positions: Positions) {
+pub fn reevaluation_engine(run_lock: Arc<RwLock<()>>, positions_to_reevaluate: Receiver<Board>, sender_positions_to_reevaluate: Sender<Board>, positions: Positions) {
     // println!("Re-Evaluation engine started");
     let start_time = std::time::Instant::now();
     // while start_time.elapsed() < RUN_DURATION {
     loop {
         let _unused = run_lock.read().unwrap();
         // println!("Reeval running");
-        let board_to_reevaluate = positions_to_reevaluate.dequeue();
+        let board_to_reevaluate = positions_to_reevaluate.recv().unwrap();
 
         if let Some(pointer_to_board) = positions.get(&board_to_reevaluate) {
             let readable_board_arrangement_positions = pointer_to_board.ptr.upgrade();
@@ -60,11 +60,9 @@ pub fn reevaluation_engine(run_lock: Arc<RwLock<()>>, positions_to_reevaluate: P
                             // println!("Updating best move");
                             *next_best_move = Some(new_next_best_move);
         
-                            let mut previous_boards: Vec<Board> = Vec::new();
                             for previous_board in board_state.previous_moves.read().unwrap().iter() {
-                                previous_boards.push(*previous_board);
+                                sender_positions_to_reevaluate.send(*previous_board);
                             }
-                            positions_to_reevaluate.queue(previous_boards);
                         } else {
                             // println!("Not updating best move #1");
                         }

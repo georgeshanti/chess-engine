@@ -1,4 +1,4 @@
-use std::{sync::{Arc, RwLock}, thread::sleep, time::Duration};
+use std::{sync::{Arc, RwLock, mpsc::Sender}, thread::sleep, time::Duration};
 
 use crate::{App, core::{board::Board, board_state::BoardState, engine::structs::{PositionToEvaluate, PositionsToReevaluate}, map::{PointerToBoard, Presence}}, headless};
 pub static TIMED: RwLock<bool> = RwLock::new(false);
@@ -77,7 +77,7 @@ pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App) {
                                 writable_board_state.previous_moves.write().unwrap().insert(previous_board);
                             }
                             {
-                                positions_to_reevaluate.queue(vec![previous_board]);
+                                positions_to_reevaluate.send(previous_board);
                             }
                         },
                         _ => {}
@@ -116,7 +116,7 @@ pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App) {
     // println!("Evaluation engine completed");
 }
 
-fn append_parent(pointer_to_board: &PointerToBoard, previous_board: &Option<Board>, positions_to_reevaluate: &PositionsToReevaluate) {
+fn append_parent(pointer_to_board: &PointerToBoard, previous_board: &Option<Board>, positions_to_reevaluate: &Sender<Board>) {
     let board_arrangement_positions = pointer_to_board.ptr.upgrade().unwrap();
     let readable_board_arrangement_positions = board_arrangement_positions.read().unwrap();
     let mut writable_board_state = readable_board_arrangement_positions.get(pointer_to_board.index).write().unwrap();
@@ -124,11 +124,9 @@ fn append_parent(pointer_to_board: &PointerToBoard, previous_board: &Option<Boar
         Some(previous_board) => {
             let inserted = writable_board_state.previous_moves.write().unwrap().insert(*previous_board);
             if inserted {
-                let mut previous_boards: Vec<Board> = Vec::new();
                 for previous_board in writable_board_state.previous_moves.read().unwrap().iter() {
-                    previous_boards.push(*previous_board);
+                    positions_to_reevaluate.send(*previous_board);
                 }
-                positions_to_reevaluate.queue(previous_boards);
             }
         },
         _ => {}

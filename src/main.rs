@@ -1,12 +1,12 @@
 mod core;
 
-use std::{sync::{Arc, Mutex, RwLock}, thread::JoinHandle, time::Duration};
+use std::{sync::{Arc, Mutex, RwLock, mpsc::{self, Receiver, Sender}}, thread::JoinHandle, time::Duration};
 use ratatui::{crossterm::event::{read, poll, Event, KeyCode}, layout::{Alignment, Constraint, Direction, Layout, Margin, Rect}, widgets::{Block, Borders, Paragraph}, DefaultTerminal, Frame};
 use regex::Regex;
 use thousands::Separable;
 use tui_input::{backend::crossterm::EventHandler, Input};
 
-use crate::core::{board::{self, *}, engine::{evaluation_engine::*, reevaluation_engine::*, structs::{PositionToEvaluate, PositionsToEvaluate, PositionsToReevaluate}}, initial_board::*, log::{FILENAME, ENABLE_LOG}, map::{PAGE_BOARD_COUNT, Positions}, piece::*, queue::*, set::Set};
+use crate::core::{board::{self, *}, board_state::BoardState, engine::{evaluation_engine::*, reevaluation_engine::*, structs::{PositionToEvaluate, PositionsToEvaluate, PositionsToReevaluate}}, initial_board::*, log::{ENABLE_LOG, FILENAME}, map::{PAGE_BOARD_COUNT, Positions}, piece::*, queue::*, set::Set};
 
 // fn prune_engine(run_lock: Arc<RwLock<()>>, positions: Positions, positions_to_evaluate: PositionsToEvaluate, root_board: Board) {
 //     let _unused = run_lock.write().unwrap();
@@ -76,11 +76,12 @@ fn main() {
 
     log!("Hello, world!");
     let thread_count = std::thread::available_parallelism().unwrap().get();
+    let (tx, rx): (Sender<Board>, Receiver<Board>) = mpsc::channel();
     // let thread_count = 2;
     let mut app = App {
         positions: Positions::new(),
         positions_to_evaluate: DistributedQueue::new(thread_count),
-        positions_to_reevaluate: Queue::new(),
+        positions_to_reevaluate: tx,
         run_lock:  Arc::new(RwLock::new(())),
         current_board: Arc::new(Mutex::new(INITIAL_BOARD)),
         thread_stats: Vec::with_capacity(thread_count),
@@ -95,7 +96,7 @@ fn main() {
         app.thread_stats.push(ThreadStat::new());
     }
 
-    let result = app.run();
+    let result = app.run(rx);
     ratatui::restore();
 
     // println!("{}", PAGE_BOARD_COUNT);
@@ -106,7 +107,7 @@ struct App {
     current_board: Arc<Mutex<Board>>,
     positions: Positions,
     positions_to_evaluate: PositionsToEvaluate,
-    positions_to_reevaluate: PositionsToReevaluate,
+    positions_to_reevaluate: Sender<Board>,
     run_lock: Arc<RwLock<()>>,
     thread_stats: Vec<ThreadStat>,
     positions_evaluated_acount: Arc<RwLock<usize>>,
@@ -132,10 +133,10 @@ impl ThreadStat {
 }
 
 impl App {
-    fn run(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    fn run(&mut self, receiver_positions_to_reevaluate: Receiver<Board>) -> Result<(), Box<dyn std::error::Error>> {
         let app = self.clone();
         let _unused = std::thread::Builder::new().name(format!("app_main")).spawn(move || {
-            app.run_engine(app.thread_stats.len());
+            app.run_engine(app.thread_stats.len(), receiver_positions_to_reevaluate);
         }).unwrap();
         {
             let mut t = self.clone();
@@ -418,7 +419,7 @@ impl App {
             // prune_engine(self.run_lock.clone(), self.positions.clone(), self.positions_to_evaluate.clone(), *current_board);
     }
 
-    fn run_engine(&self, thread_count: usize) {
+    fn run_engine(&self, thread_count: usize, receiver_positions_to_reevaluate: Receiver<Board>) {
         self.positions_to_evaluate.queue(vec![PositionToEvaluate{ value: (None, INITIAL_BOARD, 0, 0) }]);
         
         let mut threads: Vec<JoinHandle<()>> = Vec::new();
@@ -436,7 +437,7 @@ impl App {
             let positions_to_reevaluate = self.positions_to_reevaluate.clone();
             let run_lock = self.run_lock.clone();
             let _unused = std::thread::Builder::new().name(format!("reevaluation_engine")).spawn(move || {
-                reevaluation_engine(run_lock, positions_to_reevaluate, positions);
+                reevaluation_engine(run_lock, receiver_positions_to_reevaluate, positions_to_reevaluate, positions);
             }).unwrap();
         }
 
