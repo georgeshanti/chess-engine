@@ -6,7 +6,7 @@ use regex::Regex;
 use thousands::Separable;
 use tui_input::{backend::crossterm::EventHandler, Input};
 
-use crate::core::{board::{self, *}, engine::{evaluation_engine::*, reevaluation_engine::*, structs::{PositionToEvaluate, PositionsToEvaluate, PositionsToReevaluate}}, initial_board::*, log::FILENAME, map::Positions, piece::*, queue::*, set::Set};
+use crate::core::{board::{self, *}, engine::{evaluation_engine::*, reevaluation_engine::*, structs::{PositionToEvaluate, PositionsToEvaluate, PositionsToReevaluate}}, initial_board::*, log::{FILENAME, ENABLE_LOG}, map::Positions, piece::*, queue::*, set::Set};
 
 fn prune_engine(run_lock: Arc<RwLock<()>>, positions: Positions, positions_to_evaluate: PositionsToEvaluate, root_board: Board) {
     let _unused = run_lock.write().unwrap();
@@ -49,6 +49,16 @@ fn main() {
         let f = format!("logs/{}.log", chrono::Local::now().format("%Y-%m-%d_%H-%M-%S").to_string());
         let mut file_name = FILENAME.write().unwrap();
         *file_name = f;
+
+        match std::env::var("LOG") {
+            Ok(value) => {
+                if value == "false" {
+                    let mut enable_log = crate::core::log::ENABLE_LOG.write().unwrap();
+                    *enable_log = false;
+                }
+            },
+            Err(_) => {},
+        };
     }
 
     // scratch();
