@@ -59,6 +59,16 @@ fn main() {
             },
             Err(_) => {},
         };
+
+        match std::env::var("TIMED") {
+            Ok(value) => {
+                if value == "true" {
+                    let mut timed = crate::core::engine::evaluation_engine::TIMED.write().unwrap();
+                    *timed = true;
+                }
+            },
+            Err(_) => {},
+        };
     }
 
     // scratch();

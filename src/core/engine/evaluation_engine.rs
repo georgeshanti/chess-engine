@@ -1,8 +1,10 @@
-use std::{sync::{Arc, RwLock}, thread::sleep};
+use std::{sync::{Arc, RwLock}, thread::sleep, time::Duration};
 
 use crate::{core::{board::Board, board_state::BoardState, engine::structs::{PositionToEvaluate, PositionsToReevaluate}, map::Presence}, headless, App};
+pub static TIMED: RwLock<bool> = RwLock::new(false);
 
 pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App) {
+    let timed: bool = *TIMED.read().unwrap();
     // while time elapsed is less than 10 seconds
     headless!("Evaluation engine started");
     let start_time = std::time::Instant::now();
@@ -22,6 +24,11 @@ pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App) {
     //     std::thread::sleep(Duration::from_millis(2000));
     // }
     loop {
+        if timed {
+            if start_time.elapsed() > Duration::from_secs(10) {
+                return;
+            }
+        }
         headless!("Evaluation engine running");
         {
             *(app.thread_stats[index].running_status.write().unwrap()) = false;
