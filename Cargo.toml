@@ -10,6 +10,7 @@ regex = "1.11.2"
 thousands = "0.2.0"
 tui-input = "*"
 chrono = "*"
+crossbeam-channel = "*"
 
 [profile.release]
 debug = true

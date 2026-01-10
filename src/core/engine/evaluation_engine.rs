@@ -41,7 +41,7 @@ pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App) {
             *(app.thread_stats[index].running_status.write().unwrap()) = true;
         }
         // println!("Evaluation engine running");
-        let position = positions_to_evaluate.dequeue(index);
+        let position = positions_to_evaluate.1.recv().unwrap();
         // for position in positions_to_evaluate.dequeue(index) {
             let (previous_board, board, board_depth, _) = position.value;
             headless!("Got board");
@@ -85,7 +85,7 @@ pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App) {
                     drop(writable_board_state);
                     headless!("Dropped writable board state");
     
-                    let mut next_boards: Vec<PositionToEvaluate> = Vec::new();
+                    // let mut next_boards: Vec<PositionToEvaluate> = Vec::new();
                     headless!("Inserting next boards");
                     // if board_depth < 6 {
                         for next_board in evaluated_board_state.1 {
@@ -97,9 +97,8 @@ pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App) {
                             //         append_parent(board_state, &previous_board, &positions_to_reevaluate);
                             //     }
                             // }
-                            next_boards.push(PositionToEvaluate{ value: (Some(board), next_board, board_depth + 1, evaluated_board_state.0.get_score()) });
+                            positions_to_evaluate.0.send(PositionToEvaluate{ value: (Some(board), next_board, board_depth + 1, evaluated_board_state.0.get_score()) });
                         }
-                        positions_to_evaluate.queue(next_boards);
                     // }
     
                     // println!("Evaluation engine inserted");

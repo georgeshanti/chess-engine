@@ -80,7 +80,7 @@ fn main() {
     // let thread_count = 2;
     let mut app = App {
         positions: Positions::new(),
-        positions_to_evaluate: DistributedQueue::new(thread_count),
+        positions_to_evaluate: crossbeam_channel::unbounded(),
         positions_to_reevaluate: tx,
         run_lock:  Arc::new(RwLock::new(())),
         current_board: Arc::new(Mutex::new(INITIAL_BOARD)),
@@ -267,16 +267,16 @@ impl App {
         let queue_length = {
             let mut queue_length = String::from("{");
             let mut count = 0;
-            for queue in self.positions_to_evaluate.queues.iter() {
-                let sub_queue_length = queue.length.read().unwrap();
-                if *sub_queue_length > 0 {
-                    queue_length += format!("{}: {}, ", 0, sub_queue_length.separate_with_commas()).as_str();
-                    count += 1;
-                }
-                if count > 5 {
-                    break;
-                }
-            }
+            // for queue in self.positions_to_evaluate.queues.iter() {
+            //     let sub_queue_length = queue.length.read().unwrap();
+            //     if *sub_queue_length > 0 {
+            //         queue_length += format!("{}: {}, ", 0, sub_queue_length.separate_with_commas()).as_str();
+            //         count += 1;
+            //     }
+            //     if count > 5 {
+            //         break;
+            //     }
+            // }
             queue_length += "}";
             queue_length
         };
@@ -420,7 +420,7 @@ impl App {
     }
 
     fn run_engine(&self, thread_count: usize, receiver_positions_to_reevaluate: Receiver<Board>) {
-        self.positions_to_evaluate.queue(vec![PositionToEvaluate{ value: (None, INITIAL_BOARD, 0, 0) }]);
+        self.positions_to_evaluate.0.send(PositionToEvaluate{ value: (None, INITIAL_BOARD, 0, 0) });
         
         let mut threads: Vec<JoinHandle<()>> = Vec::new();
         // println!("Starting {} threads", cpu_count);
