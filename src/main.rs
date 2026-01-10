@@ -6,43 +6,43 @@ use regex::Regex;
 use thousands::Separable;
 use tui_input::{backend::crossterm::EventHandler, Input};
 
-use crate::core::{board::{self, *}, engine::{evaluation_engine::*, reevaluation_engine::*, structs::{PositionToEvaluate, PositionsToEvaluate, PositionsToReevaluate}}, initial_board::*, log::{FILENAME, ENABLE_LOG}, map::Positions, piece::*, queue::*, set::Set};
+use crate::core::{board::{self, *}, engine::{evaluation_engine::*, reevaluation_engine::*, structs::{PositionToEvaluate, PositionsToEvaluate, PositionsToReevaluate}}, initial_board::*, log::{FILENAME, ENABLE_LOG}, map::{PAGE_BOARD_COUNT, Positions}, piece::*, queue::*, set::Set};
 
-fn prune_engine(run_lock: Arc<RwLock<()>>, positions: Positions, positions_to_evaluate: PositionsToEvaluate, root_board: Board) {
-    let _unused = run_lock.write().unwrap();
-    // println!("Pruning engine started");
-    let evaluated_boards = {
-        let mut evaluated_boards = positions.keys();
-        let mut parent_boards = vec![root_board];
-        let mut child_boards = vec![];
-        let mut removed = true;
-        while parent_boards.len() > 0 && removed {
-            // println!("Evaluated boards: {}", evaluated_boards.len());
-            removed = false;
-            for parent_board in parent_boards.iter() {
-                let was_present = evaluated_boards.remove(parent_board);
-                if was_present {
-                    removed = true;
-                }
-                if let Some(board_state) = positions.get(parent_board) {
-                    let board_state = board_state.read().unwrap();
-                    child_boards.extend(board_state.next_moves.iter().collect::<Vec<&Board>>());
-                }
-            }
-            parent_boards = child_boards;
-            child_boards = vec![];
-        }
-        evaluated_boards
-    };
-    positions.remove_keys(evaluated_boards.iter().cloned().collect::<Vec<Board>>());
-    // println!("Removed unreachable boards from positions");
-    let removed_from_queue = 0;
-    // positions_to_evaluate.prune(&evaluated_boards);
-    // println!("Removed unreachable boards from queue");
-    // println!("Number of removed boards: {}", evaluated_boards.len());
-    // println!("Number of removed boards from queue: {}", removed_from_queue);
-    // println!("Pruning engine completed");
-}
+// fn prune_engine(run_lock: Arc<RwLock<()>>, positions: Positions, positions_to_evaluate: PositionsToEvaluate, root_board: Board) {
+//     let _unused = run_lock.write().unwrap();
+//     // println!("Pruning engine started");
+//     let evaluated_boards = {
+//         let mut evaluated_boards = positions.keys();
+//         let mut parent_boards = vec![root_board];
+//         let mut child_boards = vec![];
+//         let mut removed = true;
+//         while parent_boards.len() > 0 && removed {
+//             // println!("Evaluated boards: {}", evaluated_boards.len());
+//             removed = false;
+//             for parent_board in parent_boards.iter() {
+//                 let was_present = evaluated_boards.remove(parent_board);
+//                 if was_present {
+//                     removed = true;
+//                 }
+//                 if let Some(board_state) = positions.get(parent_board) {
+//                     let board_state = board_state.read().unwrap();
+//                     child_boards.extend(board_state.next_moves.iter().collect::<Vec<&Board>>());
+//                 }
+//             }
+//             parent_boards = child_boards;
+//             child_boards = vec![];
+//         }
+//         evaluated_boards
+//     };
+//     positions.remove_keys(evaluated_boards.iter().cloned().collect::<Vec<Board>>());
+//     // println!("Removed unreachable boards from positions");
+//     let removed_from_queue = 0;
+//     // positions_to_evaluate.prune(&evaluated_boards);
+//     // println!("Removed unreachable boards from queue");
+//     // println!("Number of removed boards: {}", evaluated_boards.len());
+//     // println!("Number of removed boards from queue: {}", removed_from_queue);
+//     // println!("Pruning engine completed");
+// }
 
 fn main() {
     unsafe {
@@ -95,12 +95,10 @@ fn main() {
         app.thread_stats.push(ThreadStat::new());
     }
 
-    // app.run_engine(app.thread_stats.len());
-    // loop {}
     let result = app.run();
-    // let result = app.run_headless();
     ratatui::restore();
-    // result.unwrap();
+
+    // println!("{}", PAGE_BOARD_COUNT);
 }
 
 #[derive(Clone)]
@@ -348,10 +346,12 @@ impl App {
             log!("Processing prompt: current_board: {:?} \n{}", current_board.pieces, current_board);
             let next_board = {
                 let current_board_state = self.positions.get(&*current_board);
-                if let Some(board_state) = current_board_state {
+                if let Some(pointer_to_board) = current_board_state {
                     log!("Processing prompt: Found board state for current position");
 
-                    let board_state = board_state.read().unwrap();
+                    let board_arrangement_positions = pointer_to_board.ptr.upgrade().unwrap();
+                    let readable_board_arrangement_positions = board_arrangement_positions.read().unwrap();
+                    let board_state = readable_board_arrangement_positions.get(pointer_to_board.index).read().unwrap();
     
                     let mut next_board: Option<Board> = None;
                     for next_move in board_state.next_moves.iter() {
@@ -383,8 +383,11 @@ impl App {
             {
                 let next_board_state = self.positions.get(&next_board);
                 match next_board_state {
-                    Some(next_board_state) => {
-                        let next_board_state = next_board_state.read().unwrap();
+                    Some(pointer_to_board) => {
+
+                        let board_arrangement_positions = pointer_to_board.ptr.upgrade().unwrap();
+                        let readable_board_arrangement_positions = board_arrangement_positions.read().unwrap();
+                        let next_board_state = readable_board_arrangement_positions.get(pointer_to_board.index).read().unwrap();
                         let next_best_move = next_board_state.next_best_move.read().unwrap();
                         match *next_best_move {
                             None => {

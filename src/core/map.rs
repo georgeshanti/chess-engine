@@ -1,6 +1,11 @@
-use std::{collections::{HashMap, HashSet}, sync::{Arc, RwLock}};
+use std::{collections::{HashMap, HashSet}, sync::{Arc, Mutex, RwLock, Weak}};
 
-use crate::{core::{bitwise_operations::and_byte, board::Board, board_state::BoardState, piece::*}, headless};
+use crate::{core::{bitwise_operations::and_byte, board::{Board, BoardArrangement}, board_state::BoardState, piece::*}, headless, log};
+
+pub struct PointerToBoard {
+    pub ptr: Weak<RwLock<BoardArrangementPositions>>,
+    pub index: usize,
+}
 
 #[derive(PartialEq, Eq, Hash, Clone)]
 pub struct BoardPieces {
@@ -96,9 +101,40 @@ fn get_board_pieces(board: &Board) -> BoardPieces {
 #[derive(Clone)]
 pub struct Positions {
     pub map: Arc<RwLock<HashMap<
-        BoardPieces,
-        Arc<RwLock<HashMap<Board, Arc<RwLock<BoardState>>>>>
+        BoardArrangement,
+        Arc<RwLock<BoardArrangementPositions>>
     >>>
+}
+
+const PAGE_SIZE: usize = 4096 * 1024;
+pub const PAGE_BOARD_COUNT: usize = PAGE_SIZE / size_of::<RwLock<BoardState>>();
+
+pub struct BoardArrangementPositions {
+    pub map: HashMap<Board, usize>,
+    pub positions: [Option<Box<Vec<RwLock<BoardState>>>>; 128],
+    pub size: usize,
+}
+
+impl BoardArrangementPositions {
+    pub fn new() -> Self {
+        BoardArrangementPositions {
+            map: HashMap::new(),
+            positions: std::array::from_fn(|_| { None }),
+            size: 0,
+        }
+    }
+
+    pub fn get(&self, index: usize) -> &RwLock<BoardState> {
+        let page_number = index / PAGE_BOARD_COUNT;
+        let page_index = index % PAGE_BOARD_COUNT;
+        let page = self.positions.get(page_number).unwrap().as_ref().unwrap();
+        match page.get(page_index) {
+            Some(board_state) => board_state,
+            None => {
+                panic!("Page index out of bounds: {} for page number: {} with capacity: {}", page_index, page_number, page.capacity());
+            }
+        }
+    }
 }
 
 pub enum Presence<T> {
@@ -114,93 +150,97 @@ impl Positions {
         }
     }
 
-    pub fn get_board_pieces_map(&self, board: &Board) -> Arc<RwLock<HashMap<Board, Arc<RwLock<BoardState>>>>> {
+    pub fn get_board_arrangement_positions(&self, board: &Board) -> Arc<RwLock<BoardArrangementPositions>> {
         let readable_board_pieces_map = self.map.read().unwrap();
-        let board_pieces = get_board_pieces(board);
-        let board_pieces_map = readable_board_pieces_map.get(&board_pieces);
+        let board_arrangement = board.get_board_arrangement();
+        let board_pieces_map = readable_board_pieces_map.get(&board_arrangement);
         match board_pieces_map {
             Some(board_pieces_map) => board_pieces_map.clone(),
             None => {
                 drop(readable_board_pieces_map);
                 let mut writable_board_pieces_map = self.map.write().unwrap();
-                match writable_board_pieces_map.get(&board_pieces) {
+                match writable_board_pieces_map.get(&board_arrangement) {
                     Some(board_pieces_map) => board_pieces_map.clone(),
                     None => {
-                        let new_board_pieces_map = Arc::new(RwLock::new(HashMap::new()));
-                        writable_board_pieces_map.insert(board_pieces, new_board_pieces_map.clone());
+                        let new_board_pieces_map = Arc::new(RwLock::new(BoardArrangementPositions::new()));
+                        writable_board_pieces_map.insert(board_arrangement, new_board_pieces_map.clone());
                         new_board_pieces_map
                     }
                 }
             }
         }
     }
-    pub fn is_present(&self, board: &Board) -> bool {
-        match self.map.read().unwrap().get(&get_board_pieces(board)) {
-            Some(positions_map) => positions_map.read().unwrap().contains_key(board),
-            None => false,
-        }
-    }
 
-    pub fn get(&self, board: &Board) -> Option<Arc<RwLock<BoardState>>> {
-        let board_pieces = get_board_pieces(board);
-        let readable_board_pieces_map = self.map.read().unwrap();
-        match readable_board_pieces_map.get(&board_pieces) {
-            Some(positions_map) => match positions_map.read().unwrap().get(board) {
-                Some(board_state) => Some(board_state.clone()),
-                None => None,
-            },
+    // pub fn is_present(&self, board: &Board) -> bool {
+    //     match self.map.read().unwrap().get(&get_board_pieces(board)) {
+    //         Some(positions_map) => positions_map.read().unwrap().contains_key(board),
+    //         None => false,
+    //     }
+    // }
+
+    pub fn get(&self, board: &Board) -> Option<PointerToBoard> {
+        let board_arrangement_positions = self.get_board_arrangement_positions(&board);
+        let readable_board_arrangement_positions = board_arrangement_positions.read().unwrap();
+        let index = readable_board_arrangement_positions.map.get(&board);
+        match index {
+            Some(index) => {
+                Some(PointerToBoard { ptr: Arc::downgrade(&board_arrangement_positions), index: *index })
+            }
             None => None,
         }
     }
 
-    pub fn edit(&self, board: &Board) -> Presence<Arc<RwLock<BoardState>>> {
-        headless!("Editing board");
-        let positions_map = self.get_board_pieces_map(board);
-        headless!("Got board pieces map");
-        let readable_positions_map = positions_map.read().unwrap();
-        headless!("Got readable positions map");
-        let board_state = readable_positions_map.get(&board);
-        if board_state.is_some() {
-            Presence::Present { value: board_state.unwrap().clone() }
+    pub fn edit<'a, 'b>(&'a self, board: &'b Board) -> Presence<PointerToBoard> {
+        // log!("Editing board");
+        let board_arrangement_positions = self.get_board_arrangement_positions(board);
+        // log!("Got board pieces map");
+        let readable_board_arrangement_positions = board_arrangement_positions.read().unwrap();
+        // log!("Got readable positions map");
+        let board_state_position = readable_board_arrangement_positions.map.get(&board);
+        if board_state_position.is_some() {
+            let index = *board_state_position.unwrap();
+            Presence::Present { value: PointerToBoard { ptr: Arc::downgrade(&board_arrangement_positions), index: index } }
         } else {
-            drop(readable_positions_map);
-            let mut writable_positions_map = positions_map.write().unwrap();
-            let new_board_state = Arc::new(RwLock::new(BoardState::new()));
-            writable_positions_map.insert(*board, new_board_state.clone());
-            Presence::Absent { value: new_board_state }
-        }
-    }
-
-    pub fn keys(&self) -> HashSet<Board> {
-        let mut keys = HashSet::new();
-        let binding = self.map.clone();
-        let readable_map = binding.read().unwrap();
-        for (_, value) in readable_map.clone().into_iter() {
-            let sub_keys = value.read().unwrap().keys().cloned().collect::<HashSet<Board>>();
-            keys.extend(sub_keys);
-        }
-        keys
-    }
-
-    pub fn len(&self) -> usize {
-        let mut len = 0;
-        let binding = self.map.clone();
-        let readable_map = binding.read().unwrap();
-        for (_, value) in readable_map.clone().into_iter() {
-            len = len + value.read().unwrap().len();
-        }
-        len
-    }
-
-    pub fn remove_keys(&self, board: Vec<Board>) {
-        let writable_map = self.map.write().unwrap();
-        for board in board {
-            let board_pieces = get_board_pieces(&board);
-            let board_pieces_map = writable_map.get(&board_pieces);
-            if let Some(board_pieces_map) = board_pieces_map {
-                let mut writable_board_pieces_map = board_pieces_map.write().unwrap();
-                writable_board_pieces_map.remove(&board);
+            drop(readable_board_arrangement_positions);
+            let mut writable_board_arrangement_positions = board_arrangement_positions.write().unwrap();
+            let board_state_position = writable_board_arrangement_positions.map.get(&board);
+            if board_state_position.is_some() {
+                let index = *board_state_position.unwrap();
+                Presence::Present { value: PointerToBoard { ptr: Arc::downgrade(&board_arrangement_positions), index: index } }
+            } else {
+                let index = writable_board_arrangement_positions.size;
+                let page = index / PAGE_BOARD_COUNT;
+                let page_index = index % PAGE_BOARD_COUNT;
+                if page_index == 0 {
+                    // log!("Creating new page");
+                    let k = writable_board_arrangement_positions.positions.get_mut(page).unwrap();
+                    *k = Some(Box::new(Vec::with_capacity(PAGE_BOARD_COUNT)));
+                    // log!("Created new page");
+                }
+                for i in &writable_board_arrangement_positions.positions {
+                    match i {
+                        Some(i) => {
+                            if i.len() == PAGE_BOARD_COUNT {
+                                log!("Page is full");
+                            }
+                        }
+                        None => {},
+                    };
+                }
+                let vec = writable_board_arrangement_positions.positions.get_mut(page).unwrap().as_mut().unwrap();
+                vec.push(RwLock::new(BoardState::new()));
+                writable_board_arrangement_positions.size += 1;
+                Presence::Absent { value: PointerToBoard { ptr: Arc::downgrade(&board_arrangement_positions), index: index } }
             }
         }
+    }
+
+    pub fn len(&self) -> String {
+        let mut len = 0;
+        for (_, value) in self.map.read().unwrap().iter() {
+            let board_arrangement_positions = value.read().unwrap();
+            len = len + board_arrangement_positions.size;
+        }
+        format!("{} {}", self.map.read().unwrap().keys().len(), len)
     }
 }

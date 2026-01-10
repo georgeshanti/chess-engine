@@ -1,10 +1,6 @@
-use std::fmt::write;
 use std::fmt::Display;
-use std::sync::Arc;
-use std::sync::RwLock;
 
 use crate::core::bitwise_operations::and_byte;
-use crate::core::bitwise_operations::xor_byte;
 use crate::core::piece::*;
 use crate::core::board_state::*;
 use crate::log;
@@ -82,10 +78,17 @@ impl Board {
 
     #[inline(never)]
     pub fn find_moves(self: &Self) -> Vec<Board> {
-        let mut moves = Vec::new();
         let presence_board = Board {pieces: and_byte(self.pieces, PRESENCE_BITS)};
         let color_board = Board {pieces: and_byte(self.pieces, COLOR_BITS)};
         let type_board = Board {pieces: and_byte(self.pieces, TYPE_BITS)};
+        let mut vec_length: usize = 0;
+        for i in 0..64 {
+            if presence_board.pieces[i] == EMPTY || color_board.pieces[i] == BLACK {
+                continue;
+            }
+            vec_length +=  get_max_movement(type_board.pieces[i]);
+        }
+        let mut moves = Vec::with_capacity(vec_length);
         for i in 0..64 {
             if presence_board.pieces[i] == EMPTY || color_board.pieces[i] == BLACK {
                 continue;
@@ -276,6 +279,7 @@ impl Board {
                 material += get_material_value(piece) * multiplier as i64;
             }
         }
+
         return (
             Evaluation {
                 result: PositionResult::Scored,
@@ -283,6 +287,134 @@ impl Board {
             },
             legal_moves,
         );
+    }
+
+    pub fn get_board_arrangement(self: &Self) -> BoardArrangement {
+        let mut white_pawns: u64 = 0;
+        let mut white_major: [u8; 6] = [0; 6];
+        let mut black_pawns: u64 = 0;
+        let mut black_major: [u8; 6] = [0; 6];
+        for i in 0..64 {
+            let piece = self.pieces[i];
+            if get_presence(piece) == EMPTY {
+                continue;
+            } else {
+                let piece_type = get_type(piece);
+                if piece_type == PAWN {
+                    if get_color(piece) == WHITE {
+                        white_pawns = white_pawns | (1 << i);
+                    } else {
+                        black_pawns = black_pawns | (1 << 63-i);
+                    }
+                } else {
+                    let index = (piece_type >> 3) - 1;
+                    if get_color(piece) == WHITE {
+                        white_major[index as usize] = white_major[index as usize] + 1;
+                    } else {
+                        black_major[index as usize] = black_major[index as usize] + 1;
+                    }
+                }
+            }
+        }
+        return match white_pawns.cmp(&black_pawns) {
+            std::cmp::Ordering::Greater => BoardArrangement {
+                higher: PieceArrangement {
+                    pawns: white_pawns,
+                    major_pieces: white_major,
+                },
+                lower: PieceArrangement {
+                    pawns: black_pawns,
+                    major_pieces: black_major,
+                },
+            },
+            std::cmp::Ordering::Less => BoardArrangement {
+                higher: PieceArrangement {
+                    pawns: black_pawns,
+                    major_pieces: black_major,
+                },
+                lower: PieceArrangement {
+                    pawns: white_pawns,
+                    major_pieces: white_major,
+                },
+            },
+            std::cmp::Ordering::Equal => match compare_u8_6(&white_major, &black_major) {
+                std::cmp::Ordering::Greater => BoardArrangement {
+                    higher: PieceArrangement {
+                        pawns: white_pawns,
+                        major_pieces: white_major,
+                    },
+                    lower: PieceArrangement {
+                        pawns: black_pawns,
+                        major_pieces: black_major,
+                    },
+                },
+                std::cmp::Ordering::Less => BoardArrangement {
+                    higher: PieceArrangement {
+                        pawns: black_pawns,
+                        major_pieces: black_major,
+                    },
+                    lower: PieceArrangement {
+                        pawns: white_pawns,
+                        major_pieces: white_major,
+                    },
+                },
+                std::cmp::Ordering::Equal => BoardArrangement {
+                    higher: PieceArrangement {
+                        pawns: white_pawns,
+                        major_pieces: white_major,
+                    },
+                    lower: PieceArrangement {
+                        pawns: black_pawns,
+                        major_pieces: black_major,
+                    },
+                },
+            },
+        }
+    }
+}
+
+fn compare_u8_6(a: &[u8; 6], b: &[u8; 6]) -> std::cmp::Ordering {
+    for i in 0..6 {
+        if a[i] > b[i] {
+            return std::cmp::Ordering::Greater;
+        } else if a[i] < b[i] {
+            return std::cmp::Ordering::Less;
+        }
+    }
+    return std::cmp::Ordering::Equal;
+}
+
+#[derive(Eq, PartialEq, Hash)]
+pub struct BoardArrangement {
+    higher: PieceArrangement,
+    lower: PieceArrangement,
+}
+
+impl Display for BoardArrangement {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.higher.fmt(f).and_then(|_| self.lower.fmt(f))
+    }
+}
+
+#[derive(Eq, PartialEq, Hash)]
+pub struct PieceArrangement {
+    pawns: u64,
+    major_pieces: [u8; 6],
+}
+
+impl Display for PieceArrangement {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut string = String::from("");
+        let mask: u64 = 0b11111111;
+        for i in 0..7 {
+            let row = (self.pawns & (mask << i*8)) >> (i*8);
+            string += &format!("{:08b}\n", row);
+        }
+        string += "{";
+        for i in 1..6 {
+            string += &format!("{}: {}, ", char(((i + 1) << 3) | WHITE | PRESENT), self.major_pieces[i as usize]);
+        }
+        write!(f, "{}}}\n", string)
     }
 }
 

@@ -1,6 +1,6 @@
 use std::{sync::{Arc, RwLock}, thread::sleep, time::Duration};
 
-use crate::{core::{board::Board, board_state::BoardState, engine::structs::{PositionToEvaluate, PositionsToReevaluate}, map::Presence}, headless, App};
+use crate::{App, core::{board::Board, board_state::BoardState, engine::structs::{PositionToEvaluate, PositionsToReevaluate}, map::{PointerToBoard, Presence}}, headless};
 pub static TIMED: RwLock<bool> = RwLock::new(false);
 
 pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App) {
@@ -52,9 +52,9 @@ pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App) {
             //         continue;
             //     }
             // }
-            let board_state = positions.clone().edit(&board);
+            let pointer_to_board = positions.clone().edit(&board);
             headless!("Got board state");
-            match board_state {
+            match pointer_to_board {
                 Presence::Absent { value } => {
                     headless!("Absent board state");
                     {
@@ -65,7 +65,9 @@ pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App) {
                     }
                     let evaluated_board_state = board.get_evaluation();
     
-                    let mut writable_board_state = value.write().unwrap();
+                    let board_arrangement_positions = value.ptr.upgrade().unwrap();
+                    let readable_board_arrangement_positions = board_arrangement_positions.read().unwrap();
+                    let mut writable_board_state = readable_board_arrangement_positions.get(value.index).write().unwrap();
                     headless!("Got writable board state");
                     writable_board_state.self_evaluation = evaluated_board_state.0;
                     writable_board_state.next_moves = evaluated_board_state.1.clone();
@@ -114,8 +116,10 @@ pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App) {
     // println!("Evaluation engine completed");
 }
 
-fn append_parent(board_state: &Arc<RwLock<BoardState>>, previous_board: &Option<Board>, positions_to_reevaluate: &PositionsToReevaluate) {
-    let writable_board_state = board_state.read().unwrap();
+fn append_parent(pointer_to_board: &PointerToBoard, previous_board: &Option<Board>, positions_to_reevaluate: &PositionsToReevaluate) {
+    let board_arrangement_positions = pointer_to_board.ptr.upgrade().unwrap();
+    let readable_board_arrangement_positions = board_arrangement_positions.read().unwrap();
+    let mut writable_board_state = readable_board_arrangement_positions.get(pointer_to_board.index).write().unwrap();
     match previous_board {
         Some(previous_board) => {
             let inserted = writable_board_state.previous_moves.write().unwrap().insert(*previous_board);

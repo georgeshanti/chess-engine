@@ -93,3 +93,15 @@ pub fn get_material_value(b: u8) -> i64 {
         _ => panic!("Invalid piece type"),
 	}
 }
+
+pub fn get_max_movement(b: u8) -> usize {
+	match get_type(b) {
+		PAWN => 4,
+		ROOK => 14,
+		KNIGHT => 8,
+		BISHOP => 13,
+		QUEEN => 27,
+		KING => 8,
+        _ => panic!("Invalid piece type"),
+	}
+}
