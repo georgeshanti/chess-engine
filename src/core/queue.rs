@@ -9,7 +9,7 @@ pub struct DistributedQueue<T> {
     pub queues: Vec<Queue<T>>,
 }
 
-impl<T> DistributedQueue<T> {
+impl<T: Clone> DistributedQueue<T> {
 
     pub fn new(size: usize) -> Self {
         let mut queue = DistributedQueue {
@@ -24,38 +24,38 @@ impl<T> DistributedQueue<T> {
     }
 
     pub fn queue(&self, value: Vec<T>) {
-        // let current_node = {
-        //     let mut current_node = self.current_node.lock().unwrap();
-        //     let index_to_queue_to = *current_node;
-        //     *current_node = (*current_node + 1) % self.size;
-        //     index_to_queue_to
-        // };
         let current_node = {
-            let mut shortest_queue_length: Option<usize> = None;
-            let mut shortest_queue_length_index = 0;
-            for i in 0..self.queues.len() {
-                let queue_length = {
-                    *(self.queues[i].length.read().unwrap())
-                };
-                match shortest_queue_length {
-                    None => {
-                        shortest_queue_length = Some(queue_length);
-                        shortest_queue_length_index = i;
-                    }
-                    Some(value) => {
-                        if queue_length < value {
-                            shortest_queue_length = Some(queue_length);
-                            shortest_queue_length_index = i;
-                        }
-                    }
-                }
-            }
-            shortest_queue_length_index
+            let mut current_node = self.current_node.lock().unwrap();
+            let index_to_queue_to = *current_node;
+            *current_node = (*current_node + 1) % self.size;
+            index_to_queue_to
         };
+        // let current_node = {
+        //     let mut shortest_queue_length: Option<usize> = None;
+        //     let mut shortest_queue_length_index = 0;
+        //     for i in 0..self.queues.len() {
+        //         let queue_length = {
+        //             *(self.queues[i].length.read().unwrap())
+        //         };
+        //         match shortest_queue_length {
+        //             None => {
+        //                 shortest_queue_length = Some(queue_length);
+        //                 shortest_queue_length_index = i;
+        //             }
+        //             Some(value) => {
+        //                 if queue_length < value {
+        //                     shortest_queue_length = Some(queue_length);
+        //                     shortest_queue_length_index = i;
+        //                 }
+        //             }
+        //         }
+        //     }
+        //     shortest_queue_length_index
+        // };
         self.queues[current_node].queue(value);
     }
 
-    pub fn dequeue(&self, i: usize) -> T {
+    pub fn dequeue(&self, i: usize) -> Vec<T> {
         self.queues[i].dequeue()
     }
 }
@@ -79,7 +79,7 @@ fn lock_tail<'a, T>(m: &'a Arc<Mutex<Arc<Mutex<Option<QueueNode<T>>>>>>) -> Mute
     m.lock().unwrap()
 }
 
-impl<T> Queue<T> {
+impl<T: Clone> Queue<T> {
     pub fn new() -> Self {
         Queue {
             head: Arc::new(Mutex::new(Arc::new(Mutex::new(None)))),
@@ -132,7 +132,7 @@ impl<T> Queue<T> {
         }
     }
 
-    pub fn dequeue(&self) -> T {
+    pub fn dequeue(&self) -> Vec<T> {
         let mut head_pointer = self.head.lock().unwrap();
         // let start = SystemTime::now();
         let mut head = {
@@ -153,19 +153,17 @@ impl<T> Queue<T> {
         };
         let mut new_head: Option<Arc<Mutex<Option<QueueNode<T>>>>> = None;
         let mut should_update_tail = false;
-        let return_value: T;
+        let return_value: Vec<T>;
         {
-            if let Some(ref mut head_node) = *head {
-                let value = head_node.value.pop().unwrap();
-                if head_node.value.is_empty() {
-                    let next = head_node.next.clone();
-                    let next_guard = next.lock().unwrap();
-                    if next_guard.is_none() {
-                        should_update_tail = true;
-                    }
-                    drop(next_guard);
-                    new_head = Some(next);
+            if let Some(ref head_node) = *head {
+                let next = head_node.next.clone();
+                let next_guard = next.lock().unwrap();
+                if next_guard.is_none() {
+                    should_update_tail = true;
                 }
+                drop(next_guard);
+                new_head = Some(next);
+                let value = head_node.value.clone();
                 return_value = value;
             } else {
                 panic!("Head unexpectedly empty");
@@ -187,7 +185,7 @@ impl<T> Queue<T> {
         // }
         {
             let mut length = self.length.write().unwrap();
-            *length = *length - 1;
+            *length = *length - return_value.len();
         }
         return_value
     }

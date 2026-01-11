@@ -209,7 +209,7 @@ impl App {
             .split(frame.area()).as_ref().try_into().unwrap();
         let [global_status_pane, thread_status_pane] = Layout::default()
             .direction(Direction::Vertical)
-            .constraints(vec![Constraint::Length(4), Constraint::Fill(1)])
+            .constraints(vec![Constraint::Length(4 + thread_count as u16), Constraint::Fill(1)])
             .split(right_pane.inner(Margin::new(1, 1))).as_ref().try_into().unwrap();
 
         let [board_pane, prompt_pane] = Layout::default()
@@ -243,13 +243,17 @@ impl App {
 
         let [queue_stat_pane, board_pieces_pane, positions_evaluated_pane, positions_evaluated_pseudo_pane] = Layout::default()
             .direction(Direction::Vertical)
-            .constraints(vec![Constraint::Length(1); 4])
+            .constraints(vec![Constraint::Length((self.thread_stats.len() + 1) as u16), Constraint::Length(1), Constraint::Length(1), Constraint::Length(1)])
             .split(global_status_pane).as_ref().try_into().unwrap();
 
         let [queue_stat_name_pane, queue_stat_value_pane] = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints(vec![Constraint::Percentage(50); 2])
+            .direction(Direction::Vertical)
+            .constraints(vec![Constraint::Length(1), Constraint::Length(self.thread_stats.len() as u16)])
             .split(queue_stat_pane).as_ref().try_into().unwrap();
+        let queue_length_panes: Vec<Rect> = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints(vec![Constraint::Length(1); self.thread_stats.len()])
+            .split(queue_stat_value_pane).as_ref().try_into().unwrap();
         let [board_pieces_name_pane, board_pieces_value_pane] = Layout::default()
             .direction(Direction::Horizontal)
             .constraints(vec![Constraint::Percentage(50); 2])
@@ -264,23 +268,21 @@ impl App {
             .split(positions_evaluated_pseudo_pane).as_ref().try_into().unwrap();
 
         frame.render_widget(Paragraph::new("Queue:"), queue_stat_name_pane);
-        let queue_length = {
-            let mut queue_length = String::from("{");
-            let mut count = 0;
-            for queue in self.positions_to_evaluate.queues.iter() {
+        // let queue_length = {
+        //     let mut queue_length = String::from("{");
+            // let mut count = 0;
+            for i in 0..self.thread_stats.len() {
+                let queue = &self.positions_to_evaluate.queues[i];
                 let sub_queue_length = queue.length.read().unwrap();
-                if *sub_queue_length > 0 {
-                    queue_length += format!("{}: {}, ", 0, sub_queue_length.separate_with_commas()).as_str();
-                    count += 1;
-                }
-                if count > 5 {
-                    break;
-                }
+                frame.render_widget(Paragraph::new(format!("{}", sub_queue_length.separate_with_commas())).alignment(Alignment::Right), queue_length_panes[i]);
+                // if count > 5 {
+                //     break;
+                // }
             }
-            queue_length += "}";
-            queue_length
-        };
-        frame.render_widget(Paragraph::new(queue_length), queue_stat_value_pane);
+        //     queue_length += "}";
+        //     queue_length
+        // };
+        // frame.render_widget(Paragraph::new(queue_length), queue_stat_value_pane);
 
         frame.render_widget(Paragraph::new("Board Pieces:"), board_pieces_name_pane);
         let len = {
