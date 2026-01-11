@@ -1,9 +1,9 @@
-use std::{sync::{Arc, RwLock, mpsc::Sender}, thread::sleep, time::Duration};
+use std::{sync::{Arc, RwLock, mpsc::{Receiver, Sender}}, thread::sleep, time::Duration};
 
 use crate::{App, core::{board::Board, board_state::BoardState, engine::structs::{PositionToEvaluate, PositionsToReevaluate}, map::{PointerToBoard, Presence}}, headless};
 pub static TIMED: RwLock<bool> = RwLock::new(false);
 
-pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App) {
+pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App, receiver: Receiver<Vec<PositionToEvaluate>>) {
     let timed: bool = *TIMED.read().unwrap();
     // while time elapsed is less than 10 seconds
     headless!("Evaluation engine started");
@@ -41,8 +41,9 @@ pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App) {
             *(app.thread_stats[index].running_status.write().unwrap()) = true;
         }
         // println!("Evaluation engine running");
-        let position = positions_to_evaluate.1.recv().unwrap();
-        // for position in positions_to_evaluate.dequeue(index) {
+        let queued_positions = receiver.recv().unwrap();
+        app.positions_to_evaluate.sub(index, queued_positions.len());
+        for position in queued_positions {
             let (previous_board, board, board_depth, _) = position.value;
             headless!("Got board");
             // println!("Evaluation engine dequeued: {}", engine_id);
@@ -85,7 +86,7 @@ pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App) {
                     drop(writable_board_state);
                     headless!("Dropped writable board state");
     
-                    // let mut next_boards: Vec<PositionToEvaluate> = Vec::new();
+                    let mut next_boards: Vec<PositionToEvaluate> = Vec::with_capacity(evaluated_board_state.1.len());
                     headless!("Inserting next boards");
                     // if board_depth < 6 {
                         for next_board in evaluated_board_state.1 {
@@ -97,8 +98,9 @@ pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App) {
                             //         append_parent(board_state, &previous_board, &positions_to_reevaluate);
                             //     }
                             // }
-                            positions_to_evaluate.0.send(PositionToEvaluate{ value: (Some(board), next_board, board_depth + 1, evaluated_board_state.0.get_score()) });
+                            next_boards.push(PositionToEvaluate{ value: (Some(board), next_board, board_depth + 1, evaluated_board_state.0.get_score()) });
                         }
+                        positions_to_evaluate.queue(next_boards);
                     // }
     
                     // println!("Evaluation engine inserted");
@@ -109,7 +111,7 @@ pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App) {
                     append_parent(&value, &previous_board, &positions_to_reevaluate);
                 },
             }
-        // }
+        }
         // println!("Evaluation engine completed: {}", engine_id);
     }
     // println!("Evaluation engine completed");

@@ -1,63 +1,76 @@
-use std::{collections::HashSet, sync::{Arc, Condvar, Mutex, MutexGuard, RwLock}};
+use std::{collections::HashSet, sync::{Arc, Condvar, Mutex, MutexGuard, RwLock, mpsc::Sender}};
 
-use crate::core::board::Board;
+use crate::{core::{board::Board, log}, log};
 
 #[derive(Clone)]
 pub struct DistributedQueue<T> {
     pub size: usize,
-    pub current_node: Arc<Mutex<usize>>,
-    pub queues: Vec<Queue<T>>,
+    pub current_node: Arc<RwLock<usize>>,
+    pub queues: Vec<Sender<Vec<T>>>,
+    pub lengths: Vec<Arc<RwLock<usize>>>
 }
 
 impl<T> DistributedQueue<T> {
 
-    pub fn new(size: usize) -> Self {
+    pub fn new(size: usize, senders: Vec<Sender<Vec<T>>>) -> Self {
         let mut queue = DistributedQueue {
             size,
-            current_node: Arc::new(Mutex::new(0)),
+            current_node: Arc::new(RwLock::new(0)),
             queues: Vec::with_capacity(size),
+            lengths: Vec::with_capacity(size),
         };
-        for _ in 0..size {
-            queue.queues.push(Queue::new());
+        for i in 0..size {
+            queue.queues.push(senders[i].clone());
+            queue.lengths.push(Arc::new(RwLock::new(0)));
         }
         return queue;
     }
 
     pub fn queue(&self, value: Vec<T>) {
-        // let current_node = {
-        //     let mut current_node = self.current_node.lock().unwrap();
-        //     let index_to_queue_to = *current_node;
-        //     *current_node = (*current_node + 1) % self.size;
-        //     index_to_queue_to
-        // };
         let current_node = {
-            let mut shortest_queue_length: Option<usize> = None;
-            let mut shortest_queue_length_index = 0;
-            for i in 0..self.queues.len() {
-                let queue_length = {
-                    *(self.queues[i].length.read().unwrap())
-                };
-                match shortest_queue_length {
-                    None => {
-                        shortest_queue_length = Some(queue_length);
-                        shortest_queue_length_index = i;
-                    }
-                    Some(value) => {
-                        if queue_length < value {
-                            shortest_queue_length = Some(queue_length);
-                            shortest_queue_length_index = i;
-                        }
-                    }
-                }
-            }
-            shortest_queue_length_index
+            *self.current_node.read().unwrap()
         };
-        self.queues[current_node].queue(value);
+        let mut lens = Vec::with_capacity(self.queues.len());
+        // let current_node = {
+        //     let mut shortest_queue_length: Option<usize> = None;
+        //     let mut shortest_queue_length_index = 0;
+        for i in 0..self.size {
+            let queue_length = *self.lengths[i].read().unwrap();
+            log!("Queue length: {} {}", i, queue_length);
+            lens.push(queue_length);
+        }
+        //     shortest_queue_length_index
+        // };
+        log!("Shortest queue length: {} {:?}", lens.len(),  lens);
+        log!("Current node: {}", current_node);
+        log!("Value length: {}", value.len());
+        {
+            let mut shortest_queue_length = self.lengths[current_node].write().unwrap();
+            *shortest_queue_length += value.len();
+        }
+        let mut lens = Vec::with_capacity(self.queues.len());
+        for i in 0..self.size {
+            let queue_length = *self.lengths[i].read().unwrap();
+            lens.push(queue_length);
+        }
+        //     shortest_queue_length_index
+        // };
+        log!("Shortest queue length1: {:?}", lens);
+        self.queues[current_node].send(value);
+        {
+            let mut current_node = self.current_node.write().unwrap();
+            *current_node = (*current_node + 1) % self.size;
+        }
     }
 
-    pub fn dequeue(&self, i: usize) -> T {
-        self.queues[i].dequeue()
+    pub fn sub(&self, i: usize, len: usize) {
+        let mut curr = self.lengths[i].write().unwrap();
+        *curr -= len;
     }
+
+    // pub fn dequeue(&self, i: usize) -> T {
+    //     self.queues[i].dequeue()
+    // }
 }
 
 #[derive(Clone)]

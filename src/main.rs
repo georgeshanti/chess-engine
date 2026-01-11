@@ -76,11 +76,19 @@ fn main() {
 
     log!("Hello, world!");
     let thread_count = std::thread::available_parallelism().unwrap().get();
-    let (tx, rx): (Sender<Board>, Receiver<Board>) = mpsc::channel();
     // let thread_count = 2;
+
+    let (tx, rx): (Sender<Board>, Receiver<Board>) = mpsc::channel();
+    let (tx_positions_to_evaluate, rx_positions_to_evaluate): (Sender<PositionToEvaluate>, Receiver<PositionToEvaluate>) = mpsc::channel();
+    let (mut senders, mut receivers): (Vec<Sender<Vec<PositionToEvaluate>>>, Vec<Receiver<Vec<PositionToEvaluate>>>) = (Vec::new(), Vec::new());
+    for _ in 0..thread_count {
+        let (tx, rx): (Sender<Vec<PositionToEvaluate>>, Receiver<Vec<PositionToEvaluate>>) = mpsc::channel();
+        senders.push(tx);
+        receivers.push(rx);
+    }
     let mut app = App {
         positions: Positions::new(),
-        positions_to_evaluate: crossbeam_channel::unbounded(),
+        positions_to_evaluate: DistributedQueue::new(thread_count, senders),
         positions_to_reevaluate: tx,
         run_lock:  Arc::new(RwLock::new(())),
         current_board: Arc::new(Mutex::new(INITIAL_BOARD)),
@@ -96,7 +104,7 @@ fn main() {
         app.thread_stats.push(ThreadStat::new());
     }
 
-    let result = app.run(rx);
+    let result = app.run(rx, receivers);
     ratatui::restore();
 
     // println!("{}", PAGE_BOARD_COUNT);
@@ -133,10 +141,10 @@ impl ThreadStat {
 }
 
 impl App {
-    fn run(&mut self, receiver_positions_to_reevaluate: Receiver<Board>) -> Result<(), Box<dyn std::error::Error>> {
+    fn run(&mut self, receiver_positions_to_reevaluate: Receiver<Board>, receivers: Vec<Receiver<Vec<PositionToEvaluate>>>) -> Result<(), Box<dyn std::error::Error>> {
         let app = self.clone();
         let _unused = std::thread::Builder::new().name(format!("app_main")).spawn(move || {
-            app.run_engine(app.thread_stats.len(), receiver_positions_to_reevaluate);
+            app.run_engine(app.thread_stats.len(), receiver_positions_to_reevaluate, receivers);
         }).unwrap();
         {
             let mut t = self.clone();
@@ -419,16 +427,17 @@ impl App {
             // prune_engine(self.run_lock.clone(), self.positions.clone(), self.positions_to_evaluate.clone(), *current_board);
     }
 
-    fn run_engine(&self, thread_count: usize, receiver_positions_to_reevaluate: Receiver<Board>) {
-        self.positions_to_evaluate.0.send(PositionToEvaluate{ value: (None, INITIAL_BOARD, 0, 0) });
+    fn run_engine(&self, thread_count: usize, receiver_positions_to_reevaluate: Receiver<Board>, mut receivers: Vec<Receiver<Vec<PositionToEvaluate>>>) {
+        self.positions_to_evaluate.queue(vec![PositionToEvaluate{ value: (None, INITIAL_BOARD, 0, 0) }]);
         
         let mut threads: Vec<JoinHandle<()>> = Vec::new();
         // println!("Starting {} threads", cpu_count);
         for i  in 0..self.thread_stats.len() {
             let app = self.clone();
             let run_lock = self.run_lock.clone();
+            let receiver = receivers.pop().unwrap();
             let join_handle = std::thread::Builder::new().name(format!("evaluation_engine_{}", i)).spawn(move || {
-                evaluation_engine(i, run_lock, app);
+                evaluation_engine(i, run_lock, app, receiver);
             }).unwrap();
             threads.push(join_handle);
         }
