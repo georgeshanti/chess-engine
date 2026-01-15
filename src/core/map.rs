@@ -106,7 +106,7 @@ pub struct Positions {
     >>>
 }
 
-const PAGE_SIZE: usize = 4096 * 1024;
+pub const PAGE_SIZE: usize = 4096 * 1024;
 pub const PAGE_BOARD_COUNT: usize = PAGE_SIZE / size_of::<RwLock<BoardState>>();
 
 pub struct BoardArrangementPositions {
@@ -212,20 +212,9 @@ impl Positions {
                 let page = index / PAGE_BOARD_COUNT;
                 let page_index = index % PAGE_BOARD_COUNT;
                 if page_index == 0 {
-                    // log!("Creating new page");
                     let k = writable_board_arrangement_positions.positions.get_mut(page).unwrap();
                     *k = Some(Box::new(Vec::with_capacity(PAGE_BOARD_COUNT)));
                     // log!("Created new page");
-                }
-                for i in &writable_board_arrangement_positions.positions {
-                    match i {
-                        Some(i) => {
-                            if i.len() == PAGE_BOARD_COUNT {
-                                log!("Page is full");
-                            }
-                        }
-                        None => {},
-                    };
                 }
                 let vec = writable_board_arrangement_positions.positions.get_mut(page).unwrap().as_mut().unwrap();
                 vec.push(RwLock::new(BoardState::new()));
