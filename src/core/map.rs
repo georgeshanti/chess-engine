@@ -218,6 +218,7 @@ impl Positions {
                 }
                 let vec = writable_board_arrangement_positions.positions.get_mut(page).unwrap().as_mut().unwrap();
                 vec.push(RwLock::new(BoardState::new()));
+                writable_board_arrangement_positions.map.insert(*board, index);
                 writable_board_arrangement_positions.size += 1;
                 Presence::Absent { value: PointerToBoard { ptr: Arc::downgrade(&board_arrangement_positions), index: index } }
             }
@@ -230,6 +231,6 @@ impl Positions {
             let board_arrangement_positions = value.read().unwrap();
             len = len + board_arrangement_positions.size;
         }
-        format!("{} {}", self.map.read().unwrap().keys().len(), len)
+        format!("{} {}", self.map.read().unwrap().len(), len)
     }
 }

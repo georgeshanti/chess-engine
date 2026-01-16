@@ -140,7 +140,7 @@ impl App {
         }).unwrap();
         {
             let mut t = self.clone();
-            let _used = std::thread::Builder::new().spawn(move || {
+            let _used = std::thread::Builder::new().name(String::from("Drawer")).spawn(move || {
                 let mut terminal = ratatui::init();
                 loop {
                     terminal.draw(|frame| t.draw(frame)).unwrap();
