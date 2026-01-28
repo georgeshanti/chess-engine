@@ -14,3 +14,4 @@ pub mod log;
 pub mod engine;
 
 pub mod bitwise_operations;
+pub mod reevaluation_queue;

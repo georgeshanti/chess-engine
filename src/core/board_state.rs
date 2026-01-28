@@ -55,7 +55,7 @@ impl Evaluation {
 
 pub struct BoardState {
 	pub self_evaluation: Evaluation,
-	pub next_moves: Vec<Board>,
+	pub next_moves: Box<[Board]>,
 
 	pub previous_moves: RwLock<HashSet<Board>>,
 
@@ -72,7 +72,7 @@ impl BoardState {
     pub fn new() -> Self {
         BoardState {
             self_evaluation: Evaluation{result: PositionResult::Draw, score: 0},
-            next_moves: vec![],
+            next_moves: Box::new([]),
 
             previous_moves: RwLock::new(HashSet::new()),
 

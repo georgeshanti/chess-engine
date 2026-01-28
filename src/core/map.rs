@@ -171,6 +171,13 @@ impl Positions {
         }
     }
 
+    pub fn get_board_arrangement_positions_or_none(&self, board: &Board) -> Option<Arc<RwLock<BoardArrangementPositions>>> {
+        let readable_board_pieces_map = self.map.read().unwrap();
+        let board_arrangement = board.get_board_arrangement();
+        let board_pieces_map = readable_board_pieces_map.get(&board_arrangement);
+        board_pieces_map.map(|board_pieces_map| board_pieces_map.clone())
+    }
+
     // pub fn is_present(&self, board: &Board) -> bool {
     //     match self.map.read().unwrap().get(&get_board_pieces(board)) {
     //         Some(positions_map) => positions_map.read().unwrap().contains_key(board),
@@ -179,15 +186,17 @@ impl Positions {
     // }
 
     pub fn get(&self, board: &Board) -> Option<PointerToBoard> {
-        let board_arrangement_positions = self.get_board_arrangement_positions(&board);
-        let readable_board_arrangement_positions = board_arrangement_positions.read().unwrap();
-        let index = readable_board_arrangement_positions.map.get(&board);
-        match index {
-            Some(index) => {
-                Some(PointerToBoard { ptr: Arc::downgrade(&board_arrangement_positions), index: *index })
+        let board_arrangement_positions = self.get_board_arrangement_positions_or_none(&board);
+        board_arrangement_positions.and_then(|board_arrangement_positions| {
+            let readable_board_arrangement_positions = board_arrangement_positions.read().unwrap();
+            let index = readable_board_arrangement_positions.map.get(&board);
+            match index {
+                Some(index) => {
+                    Some(PointerToBoard { ptr: Arc::downgrade(&board_arrangement_positions), index: *index })
+                }
+                None => None,
             }
-            None => None,
-        }
+        })
     }
 
     pub fn edit<'a, 'b>(&'a self, board: &'b Board) -> Presence<PointerToBoard> {
@@ -212,7 +221,11 @@ impl Positions {
                 let page = index / PAGE_BOARD_COUNT;
                 let page_index = index % PAGE_BOARD_COUNT;
                 if page_index == 0 {
-                    let k = writable_board_arrangement_positions.positions.get_mut(page).unwrap();
+                    let k = writable_board_arrangement_positions.positions.get_mut(page);
+                    if let None = k {
+                        log!("Page not found: {}", page);
+                    }
+                    let k = k.unwrap();
                     *k = Some(Box::new(Vec::with_capacity(PAGE_BOARD_COUNT)));
                     // log!("Created new page");
                 }

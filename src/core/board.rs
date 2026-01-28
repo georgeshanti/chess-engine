@@ -240,7 +240,7 @@ impl Board {
         return false;
     }
 
-    pub fn get_evaluation(self: &Self) -> (Evaluation, Vec<Board>) {
+    pub fn get_evaluation(self: &Self) -> (Evaluation, Box<[Board]>) {
         let moves = self.find_moves();
         let mut legal_moves: Vec<Board> = vec![];
         for board in moves.iter() {
@@ -255,7 +255,7 @@ impl Board {
                         result: PositionResult::Loss,
                         score: 0,
                     },
-                    vec![],
+                    Box::new([]),
                 );
             } else {
                 return (
@@ -263,7 +263,7 @@ impl Board {
                         result: PositionResult::Draw,
                         score: 0,
                     },
-                    vec![],
+                    Box::new([]),
                 );
             }
         }
@@ -285,9 +285,16 @@ impl Board {
                 result: PositionResult::Scored,
                 score: material as i32,
             },
-            legal_moves,
+            legal_moves.into_boxed_slice(),
         );
     }
+
+    // fn add_piece_to_pawns(
+    //     white_pawns: &mut u64,
+    //     white_major: &mut [u8; 6],
+    //     black_pawns: &mut u64,
+    //     black_major: &mut [u8; 6],
+    // )
 
     pub fn get_board_arrangement(self: &Self) -> BoardArrangement {
         let mut white_pawns: u64 = 0;

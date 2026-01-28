@@ -1,26 +1,48 @@
-use std::{cmp::Ordering, sync::{Arc, RwLock, mpsc::{Receiver, Sender}}, thread::current};
+use std::{cmp::Ordering, collections::HashSet, hash::RandomState, sync::{Arc, RwLock, mpsc::{Receiver, Sender}}, thread::{current, sleep}, time::Duration};
 
-use crate::core::{board::Board, board_state::NextBestMove, engine::structs::PositionsToReevaluate, map::Positions, queue::*};
+use crate::{core::{board::Board, board_state::NextBestMove, engine::structs::PositionsToReevaluate, map::Positions, queue::*, reevaluation_queue::ReevaluationQueue}, log};
 
 
 
-pub fn reevaluation_engine(run_lock: Arc<RwLock<()>>, positions_to_reevaluate: Receiver<Board>, sender_positions_to_reevaluate: Sender<Board>, positions: Positions) {
+pub fn reevaluation_engine(run_lock: Arc<RwLock<()>>, positions_to_reevaluate: ReevaluationQueue, positions: Positions) {
     // println!("Re-Evaluation engine started");
     let start_time = std::time::Instant::now();
     // while start_time.elapsed() < RUN_DURATION {
     loop {
         let _unused = run_lock.read().unwrap();
         // println!("Reeval running");
-        let board_to_reevaluate = positions_to_reevaluate.recv().unwrap();
+        // let value = {
+        //     let mut value = 0;
+        //     loop {
+        //         if value > 5 {
+        //             break None;
+        //         }
+        //         let option = positions_to_reevaluate.pop();
+        //         match option {
+        //             Some(option) => {
+        //                 break Some(option);
+        //             }
+        //             None => {
+        //                 sleep(Duration::from_millis(1));
+        //                 continue;
+        //             }
+        //         }
+        //     }
+        // };
+        let value = positions_to_reevaluate.pop();
+
+        if let None = value {
+            break;
+        }
+
+        let (board_to_reevaluate, depth) = value.unwrap();
 
         if let Some(pointer_to_board) = positions.get(&board_to_reevaluate) {
             let board_arrangement_positions = pointer_to_board.ptr.upgrade();
             if let Some(board_arrangement_positions) = board_arrangement_positions {
-                let next_moves = {
-                    let readable_board_arrangement_positions = board_arrangement_positions.read().unwrap();
-                    let board_state = readable_board_arrangement_positions.get(pointer_to_board.index).read().unwrap();
-                    board_state.next_moves.clone()
-                };
+                let readable_board_arrangement_positions = board_arrangement_positions.read().unwrap();
+                let board_state = readable_board_arrangement_positions.get(pointer_to_board.index).read().unwrap();
+                let next_moves = &board_state.next_moves;
 
                 let mut new_next_best_move: Option<NextBestMove> = None;
 
@@ -56,6 +78,8 @@ pub fn reevaluation_engine(run_lock: Arc<RwLock<()>>, positions_to_reevaluate: R
                     }
                 }
 
+                let mut should_reevaluate = false;
+
                 if let Some(new_next_best_move) = new_next_best_move {
                     let readable_board_arrangement_positions = board_arrangement_positions.read().unwrap();
                     let board_state = readable_board_arrangement_positions.get(pointer_to_board.index).read().unwrap();
@@ -65,14 +89,34 @@ pub fn reevaluation_engine(run_lock: Arc<RwLock<()>>, positions_to_reevaluate: R
                             if new_next_best_move.evaluation.compare_to(&current_next_best_move.evaluation) == Ordering::Greater ||
                                 new_next_best_move.board == current_next_best_move.board {
                                 *current_next_best_move = new_next_best_move;
+                                should_reevaluate = true;
                             }
                         }
                         None => {
                             *current_next_best_move = Some(new_next_best_move);
+                            should_reevaluate = true;
                         }
+                    }
+                }
+
+                if should_reevaluate {
+
+                    let readable_board_arrangement_positions = board_arrangement_positions.read().unwrap();
+                    let board_state = readable_board_arrangement_positions.get(pointer_to_board.index).read().unwrap();
+                    let previous_moves = board_state.previous_moves.read().unwrap();
+                    for previous_move in previous_moves.iter() {
+                        positions_to_reevaluate.add(*previous_move, depth-1);
                     }
                 }
             }
         }
     }
+}
+
+fn clone_next_moves(next_moves: &Vec<Board>) -> Vec<Board> {
+    next_moves.clone()
+}
+
+fn clone_previous_moves(previous_moves: &RwLock<HashSet<Board, RandomState>>) -> HashSet<Board> {
+    previous_moves.read().unwrap().clone()
 }

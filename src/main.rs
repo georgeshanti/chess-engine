@@ -6,7 +6,7 @@ use regex::Regex;
 use thousands::Separable;
 use tui_input::{backend::crossterm::EventHandler, Input};
 
-use crate::core::{board::{self, *}, board_state::BoardState, engine::{evaluation_engine::*, reevaluation_engine::*, structs::{PositionToEvaluate, PositionsToEvaluate, PositionsToReevaluate}}, initial_board::*, log::{ENABLE_LOG, FILENAME}, map::{PAGE_BOARD_COUNT, Positions}, piece::*, queue::*, set::Set};
+use crate::core::{board::{self, *}, board_state::BoardState, engine::{evaluation_engine::*, reevaluation_engine::*, structs::{PositionToEvaluate, PositionsToEvaluate, PositionsToReevaluate}}, initial_board::*, log::{ENABLE_LOG, FILENAME}, map::{PAGE_BOARD_COUNT, Positions}, piece::*, queue::*, reevaluation_queue::ReevaluationQueue, set::Set};
 
 // fn prune_engine(run_lock: Arc<RwLock<()>>, positions: Positions, positions_to_evaluate: PositionsToEvaluate, root_board: Board) {
 //     let _unused = run_lock.write().unwrap();
@@ -81,14 +81,15 @@ fn main() {
     let mut app = App {
         positions: Positions::new(),
         positions_to_evaluate: DistributedQueue::new(thread_count),
-        positions_to_reevaluate: tx,
+        positions_to_reevaluate: ReevaluationQueue::new(),
         run_lock:  Arc::new(RwLock::new(())),
         current_board: Arc::new(Mutex::new(INITIAL_BOARD)),
         thread_stats: Vec::with_capacity(thread_count),
+        thread_count: thread_count,
         positions_evaluated_acount: Arc::new(RwLock::new(0)),
         frame_count: 0,
         input: Arc::new(RwLock::new(Input::new(String::from("")))),
-        editing: true,
+        editing: Arc::new(RwLock::new(true)),
         prompt: String::from("Enter move:"),
     };
 
@@ -107,13 +108,14 @@ struct App {
     current_board: Arc<Mutex<Board>>,
     positions: Positions,
     positions_to_evaluate: PositionsToEvaluate,
-    positions_to_reevaluate: Sender<Board>,
+    positions_to_reevaluate: ReevaluationQueue,
     run_lock: Arc<RwLock<()>>,
     thread_stats: Vec<ThreadStat>,
+    thread_count: usize,
     positions_evaluated_acount: Arc<RwLock<usize>>,
     frame_count: usize,
     input: Arc<RwLock<Input>>,
-    editing: bool,
+    editing: Arc<RwLock<bool>>,
     prompt: String,
 }
 
@@ -153,21 +155,21 @@ impl App {
             if poll(Duration::from_millis(100))? {
                 log!("Got event");
                 let event = read().unwrap();
-
-                if self.editing {
+                let mut editing = self.editing.write().unwrap();
+                if *editing {
                     log!("Editing");
                     match event {
                         Event::Key(key_event) => {
                             log!("Got key event");
                             if key_event.code == KeyCode::Esc {
                                 log!("Got Esc key event");
-                                self.editing = false;
+                                *editing = false;
                             } else if key_event.code == KeyCode::Enter {
                                 log!("Got Enter key event");
-                                self.editing = false;
+                                *editing = false;
                                 log!("Processing prompt");
+                                drop(editing);
                                 self.process_prompt();
-                                self.editing = true;
                             } else {
                                 log!("Forward to input");
                                 self.input.write().unwrap().handle_event(&event);
@@ -182,7 +184,7 @@ impl App {
                             log!("Got key event");
                             if key_event.code == KeyCode::Enter {
                                 log!("Got Enter key event. Entering edit mode.");
-                                self.editing = true;
+                                *editing = true;
                             } else if key_event.code == KeyCode::Esc {
                                 log!("Got Esc key event. Exiting application.");
                                 break Ok(());
@@ -209,7 +211,7 @@ impl App {
             .split(frame.area()).as_ref().try_into().unwrap();
         let [global_status_pane, thread_status_pane] = Layout::default()
             .direction(Direction::Vertical)
-            .constraints(vec![Constraint::Length(4 + thread_count as u16), Constraint::Fill(1)])
+            .constraints(vec![Constraint::Length(4), Constraint::Fill(1)])
             .split(right_pane.inner(Margin::new(1, 1))).as_ref().try_into().unwrap();
 
         let [board_pane, prompt_pane] = Layout::default()
@@ -243,17 +245,13 @@ impl App {
 
         let [queue_stat_pane, board_pieces_pane, positions_evaluated_pane, positions_evaluated_pseudo_pane] = Layout::default()
             .direction(Direction::Vertical)
-            .constraints(vec![Constraint::Length((self.thread_stats.len() + 1) as u16), Constraint::Length(1), Constraint::Length(1), Constraint::Length(1)])
+            .constraints(vec![Constraint::Length(1), Constraint::Length(1), Constraint::Length(1), Constraint::Length(1)])
             .split(global_status_pane).as_ref().try_into().unwrap();
 
         let [queue_stat_name_pane, queue_stat_value_pane] = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints(vec![Constraint::Length(1), Constraint::Length(self.thread_stats.len() as u16)])
+            .direction(Direction::Horizontal)
+            .constraints(vec![Constraint::Fill(1), Constraint::Fill(1)])
             .split(queue_stat_pane).as_ref().try_into().unwrap();
-        let queue_length_panes: Vec<Rect> = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints(vec![Constraint::Length(1); self.thread_stats.len()])
-            .split(queue_stat_value_pane).as_ref().try_into().unwrap();
         let [board_pieces_name_pane, board_pieces_value_pane] = Layout::default()
             .direction(Direction::Horizontal)
             .constraints(vec![Constraint::Percentage(50); 2])
@@ -271,14 +269,7 @@ impl App {
         // let queue_length = {
         //     let mut queue_length = String::from("{");
             // let mut count = 0;
-            for i in 0..self.thread_stats.len() {
-                let queue = &self.positions_to_evaluate.queues[i];
-                let sub_queue_length = queue.length.read().unwrap();
-                frame.render_widget(Paragraph::new(format!("{}", sub_queue_length.separate_with_commas())).alignment(Alignment::Right), queue_length_panes[i]);
-                // if count > 5 {
-                //     break;
-                // }
-            }
+        frame.render_widget(Paragraph::new(format!("{}", self.positions_to_reevaluate.len().separate_with_commas())).alignment(Alignment::Right), queue_stat_value_pane);
         //     queue_length += "}";
         //     queue_length
         // };
@@ -382,41 +373,59 @@ impl App {
                     return;
                 }
             };
-            
-            {
-                let next_board_state = self.positions.get(&next_board);
-                match next_board_state {
-                    Some(pointer_to_board) => {
 
-                        let board_arrangement_positions = pointer_to_board.ptr.upgrade().unwrap();
-                        let readable_board_arrangement_positions = board_arrangement_positions.read().unwrap();
-                        let next_board_state = readable_board_arrangement_positions.get(pointer_to_board.index).read().unwrap();
-                        let next_best_move = next_board_state.next_best_move.read().unwrap();
-                        match *next_best_move {
-                            None => {
-                                log!("Processing prompt: No next best move found for entered move's position");
-                                self.prompt = String::from("Have not evaluated position yet. Enter move:");
-                                input.reset();
-                                return;
-                            }
-                            Some(next_best_move) => {
-                                log!("Processing prompt: Setting current board to {}", next_best_move.board);
-                                log!("Setting current board to {}", next_best_move.board);
-                                *current_board = next_best_move.board;
-                                input.reset();
-                            }
-                        }
-                    },
-                    None => {
-                        // println!("Positions: {}", positions.len());
-                        // println!("Depth: {}", DEPTH.lock().unwrap());
-                        log!("Processing prompt: Could not find board state for entered move's position");
-                        self.prompt = String::from("Have not evaluated position yet. Enter move:");
-                        input.reset();
-                        return;
-                    }
-                }
+            let mut handles = vec![];
+            for i in 0..self.thread_count {
+                let run_lock = self.run_lock.clone();
+                let positions_to_reevaluate = self.positions_to_reevaluate.clone();
+                let positions = self.positions.clone();
+                handles.push(std::thread::Builder::new().name(format!("reevaluation_engine_{}", i)).spawn(move || {
+                    reevaluation_engine(run_lock, positions_to_reevaluate, positions);
+                }));
             }
+            let editing = self.editing.clone();
+            std::thread::Builder::new().name(format!("reevaluation_engine_main")).spawn(move || {
+                for handle in handles {
+                    handle.unwrap().join().unwrap();
+                }
+                let mut editing = editing.write().unwrap();
+                *editing = true;
+            }).unwrap();
+            
+            // {
+            //     let next_board_state = self.positions.get(&next_board);
+            //     match next_board_state {
+            //         Some(pointer_to_board) => {
+
+            //             let board_arrangement_positions = pointer_to_board.ptr.upgrade().unwrap();
+            //             let readable_board_arrangement_positions = board_arrangement_positions.read().unwrap();
+            //             let next_board_state = readable_board_arrangement_positions.get(pointer_to_board.index).read().unwrap();
+            //             let next_best_move = next_board_state.next_best_move.read().unwrap();
+            //             match *next_best_move {
+            //                 None => {
+            //                     log!("Processing prompt: No next best move found for entered move's position");
+            //                     self.prompt = String::from("Have not evaluated position yet. Enter move:");
+            //                     input.reset();
+            //                     return;
+            //                 }
+            //                 Some(next_best_move) => {
+            //                     log!("Processing prompt: Setting current board to {}", next_best_move.board);
+            //                     log!("Setting current board to {}", next_best_move.board);
+            //                     *current_board = next_best_move.board;
+            //                     input.reset();
+            //                 }
+            //             }
+            //         },
+            //         None => {
+            //             // println!("Positions: {}", positions.len());
+            //             // println!("Depth: {}", DEPTH.lock().unwrap());
+            //             log!("Processing prompt: Could not find board state for entered move's position");
+            //             self.prompt = String::from("Have not evaluated position yet. Enter move:");
+            //             input.reset();
+            //             return;
+            //         }
+            //     }
+            // }
     
             // prune_engine(self.run_lock.clone(), self.positions.clone(), self.positions_to_evaluate.clone(), *current_board);
     }
@@ -434,14 +443,14 @@ impl App {
             }).unwrap();
             threads.push(join_handle);
         }
-        {
-            let positions = self.positions.clone();
-            let positions_to_reevaluate = self.positions_to_reevaluate.clone();
-            let run_lock = self.run_lock.clone();
-            let _unused = std::thread::Builder::new().name(format!("reevaluation_engine")).spawn(move || {
-                reevaluation_engine(run_lock, receiver_positions_to_reevaluate, positions_to_reevaluate, positions);
-            }).unwrap();
-        }
+        // {
+        //     let positions = self.positions.clone();
+        //     let positions_to_reevaluate = self.positions_to_reevaluate.clone();
+        //     let run_lock = self.run_lock.clone();
+        //     let _unused = std::thread::Builder::new().name(format!("reevaluation_engine")).spawn(move || {
+        //         reevaluation_engine(run_lock, positions_to_reevaluate, positions);
+        //     }).unwrap();
+        // }
 
         // for m in current_board.find_moves() {
         //     println!("{}", m.inverted());

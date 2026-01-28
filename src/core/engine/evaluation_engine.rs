@@ -77,7 +77,8 @@ pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App) {
                                 writable_board_state.previous_moves.write().unwrap().insert(previous_board);
                             }
                             {
-                                positions_to_reevaluate.send(previous_board);
+                                positions_to_reevaluate.remove(previous_board);
+                                positions_to_reevaluate.add(board, board_depth);
                             }
                         },
                         _ => {}
@@ -107,7 +108,12 @@ pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App) {
                 Presence::Present { value } => {
                     headless!("Present board state");
                     // println!("Evaluation engine reading");
-                    append_parent(&value, &previous_board, &positions_to_reevaluate);
+                    if let Some(previous_board) = previous_board {
+                        let board_arrangement_positions = value.ptr.upgrade().unwrap();
+                        let readable_board_arrangement_positions = board_arrangement_positions.read().unwrap();
+                        let readable_board_state = readable_board_arrangement_positions.get(value.index).read().unwrap();
+                        readable_board_state.previous_moves.write().unwrap().insert(previous_board);
+                    }
                 },
             }
         }
@@ -116,19 +122,5 @@ pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App) {
     // println!("Evaluation engine completed");
 }
 
-fn append_parent(pointer_to_board: &PointerToBoard, previous_board: &Option<Board>, positions_to_reevaluate: &Sender<Board>) {
-    let board_arrangement_positions = pointer_to_board.ptr.upgrade().unwrap();
-    let readable_board_arrangement_positions = board_arrangement_positions.read().unwrap();
-    let mut writable_board_state = readable_board_arrangement_positions.get(pointer_to_board.index).write().unwrap();
-    match previous_board {
-        Some(previous_board) => {
-            let inserted = writable_board_state.previous_moves.write().unwrap().insert(*previous_board);
-            if inserted {
-                for previous_board in writable_board_state.previous_moves.read().unwrap().iter() {
-                    positions_to_reevaluate.send(*previous_board);
-                }
-            }
-        },
-        _ => {}
-    };
+fn append_parent(pointer_to_board: &PointerToBoard, previous_board: &Board) {
 }
