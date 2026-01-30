@@ -1,4 +1,4 @@
-use std::{collections::HashSet, sync::{Arc, Condvar, Mutex, MutexGuard, RwLock}};
+use std::{collections::HashSet, sync::{Arc, Condvar, Mutex, MutexGuard, RwLock}, time::Duration};
 
 use crate::core::board::Board;
 
@@ -57,6 +57,10 @@ impl<T: Clone> DistributedQueue<T> {
 
     pub fn dequeue(&self, i: usize) -> Vec<T> {
         self.queues[i].dequeue()
+    }
+
+    pub fn dequeue_optional(&self, i: usize) -> Option<Vec<T>> {
+        self.queues[i].dequeue_optional()
     }
 }
 
@@ -132,6 +136,59 @@ impl<T: Clone> Queue<T> {
         }
     }
 
+    pub fn dequeue_optional(&self) -> Option<Vec<T>> {
+        let mut head_pointer = self.head.lock().unwrap();
+        // let start = SystemTime::now();
+        let head = {
+            let scoped_head = head_pointer.lock().unwrap();
+                match *scoped_head {
+                    None => {
+                        return None;
+                    },
+                    Some(_) => {
+                        scoped_head
+                    }
+                }
+        };
+        let mut should_update_tail = false;
+        let return_value: Vec<T>;
+        let new_head = {
+            if let Some(ref head_node) = *head {
+                let next = head_node.next.clone();
+                let next_guard = next.lock().unwrap();
+                if next_guard.is_none() {
+                    should_update_tail = true;
+                }
+                drop(next_guard);
+                let value = head_node.value.clone();
+                return_value = value;
+                next
+            } else {
+                panic!("Head unexpectedly empty");
+            }
+        };
+        drop(head);
+        *head_pointer = new_head.clone();
+        if should_update_tail {
+            let mut tail_pointer = self.tail.lock().unwrap();
+            *tail_pointer = new_head.clone();
+        }
+
+        // let end = SystemTime::now();
+        // let elapsed = end.duration_since(start).unwrap().as_nanos();
+        // if elapsed > 0 {
+        //     println!("it took {}ns", elapsed);
+        // }
+        {
+            let mut length = self.length.write().unwrap();
+            if *length - return_value.len() < 0 {
+                panic!("Length is negative");
+            }
+            *length = *length - return_value.len();
+        }
+        Some(return_value)
+    }
+
     pub fn dequeue(&self) -> Vec<T> {
         let mut head_pointer = self.head.lock().unwrap();
         // let start = SystemTime::now();
@@ -151,10 +208,9 @@ impl<T: Clone> Queue<T> {
                 }
             }
         };
-        let mut new_head: Option<Arc<Mutex<Option<QueueNode<T>>>>> = None;
         let mut should_update_tail = false;
         let return_value: Vec<T>;
-        {
+        let new_head = {
             if let Some(ref head_node) = *head {
                 let next = head_node.next.clone();
                 let next_guard = next.lock().unwrap();
@@ -162,20 +218,18 @@ impl<T: Clone> Queue<T> {
                     should_update_tail = true;
                 }
                 drop(next_guard);
-                new_head = Some(next);
                 let value = head_node.value.clone();
                 return_value = value;
+                next
             } else {
                 panic!("Head unexpectedly empty");
-            };
-        }
-        drop(head);
-        if let Some(new_head) = new_head {
-            *head_pointer = new_head.clone();
-            if should_update_tail {
-                let mut tail_pointer = self.tail.lock().unwrap();
-                *tail_pointer = new_head.clone();
             }
+        };
+        drop(head);
+        *head_pointer = new_head.clone();
+        if should_update_tail {
+            let mut tail_pointer = self.tail.lock().unwrap();
+            *tail_pointer = new_head.clone();
         }
 
         // let end = SystemTime::now();
@@ -185,9 +239,16 @@ impl<T: Clone> Queue<T> {
         // }
         {
             let mut length = self.length.write().unwrap();
+            if *length - return_value.len() < 0 {
+                panic!("Length is negative");
+            }
             *length = *length - return_value.len();
         }
         return_value
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.head.lock().unwrap().lock().unwrap().is_none()
     }
 }
 

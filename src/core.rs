@@ -15,3 +15,4 @@ pub mod engine;
 
 pub mod bitwise_operations;
 pub mod reevaluation_queue;
+pub mod weighted_queue;

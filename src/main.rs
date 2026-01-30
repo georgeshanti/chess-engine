@@ -6,7 +6,7 @@ use regex::Regex;
 use thousands::Separable;
 use tui_input::{backend::crossterm::EventHandler, Input};
 
-use crate::core::{board::{self, *}, board_state::BoardState, engine::{evaluation_engine::*, reevaluation_engine::*, structs::{PositionToEvaluate, PositionsToEvaluate, PositionsToReevaluate}}, initial_board::*, log::{ENABLE_LOG, FILENAME}, map::{PAGE_BOARD_COUNT, Positions}, piece::*, queue::*, reevaluation_queue::ReevaluationQueue, set::Set};
+use crate::core::{board::{self, *}, board_state::BoardState, engine::{evaluation_engine::*, reevaluation_engine::*, structs::{PositionToEvaluate, PositionsToEvaluate, PositionsToReevaluate}}, initial_board::*, log::{ENABLE_LOG, FILENAME}, map::{PAGE_BOARD_COUNT, Positions}, piece::*, queue::*, reevaluation_queue::ReevaluationQueue, set::Set, weighted_queue::DistributedWeightedQueue};
 
 // fn prune_engine(run_lock: Arc<RwLock<()>>, positions: Positions, positions_to_evaluate: PositionsToEvaluate, root_board: Board) {
 //     let _unused = run_lock.write().unwrap();
@@ -80,8 +80,8 @@ fn main() {
     // let thread_count = 2;
     let mut app = App {
         positions: Positions::new(),
-        positions_to_evaluate: DistributedQueue::new(thread_count),
-        positions_to_reevaluate: ReevaluationQueue::new(),
+        positions_to_evaluate: DistributedWeightedQueue::new(thread_count),
+        positions_to_reevaluate: DistributedQueue::new(thread_count),
         run_lock:  Arc::new(RwLock::new(())),
         current_board: Arc::new(Mutex::new(INITIAL_BOARD)),
         thread_stats: Vec::with_capacity(thread_count),
@@ -108,7 +108,7 @@ struct App {
     current_board: Arc<Mutex<Board>>,
     positions: Positions,
     positions_to_evaluate: PositionsToEvaluate,
-    positions_to_reevaluate: ReevaluationQueue,
+    positions_to_reevaluate: PositionsToReevaluate,
     run_lock: Arc<RwLock<()>>,
     thread_stats: Vec<ThreadStat>,
     thread_count: usize,
@@ -146,7 +146,7 @@ impl App {
                 let mut terminal = ratatui::init();
                 loop {
                     terminal.draw(|frame| t.draw(frame)).unwrap();
-                    std::thread::sleep(Duration::from_millis(1000));
+                    std::thread::sleep(Duration::from_millis(100));
                 }
             }).unwrap();
         }
@@ -211,7 +211,7 @@ impl App {
             .split(frame.area()).as_ref().try_into().unwrap();
         let [global_status_pane, thread_status_pane] = Layout::default()
             .direction(Direction::Vertical)
-            .constraints(vec![Constraint::Length(4), Constraint::Fill(1)])
+            .constraints(vec![Constraint::Length(5), Constraint::Fill(1)])
             .split(right_pane.inner(Margin::new(1, 1))).as_ref().try_into().unwrap();
 
         let [board_pane, prompt_pane] = Layout::default()
@@ -243,15 +243,20 @@ impl App {
         // frame.render_widget(Block::default().borders(Borders::ALL), vertical_panes[1]);
         // frame.render_widget(Block::default().borders(Borders::ALL), vertical_panes[0]);
 
-        let [queue_stat_pane, board_pieces_pane, positions_evaluated_pane, positions_evaluated_pseudo_pane] = Layout::default()
+        let [eval_queue_stat_pane, reval_queue_stat_pane, board_pieces_pane, positions_evaluated_pane, positions_evaluated_pseudo_pane] = Layout::default()
             .direction(Direction::Vertical)
-            .constraints(vec![Constraint::Length(1), Constraint::Length(1), Constraint::Length(1), Constraint::Length(1)])
+            .constraints(vec![Constraint::Length(1), Constraint::Length(1), Constraint::Length(1), Constraint::Length(1), Constraint::Length(1)])
             .split(global_status_pane).as_ref().try_into().unwrap();
 
-        let [queue_stat_name_pane, queue_stat_value_pane] = Layout::default()
+        let [eval_queue_stat_name_pane, eval_queue_stat_value_pane] = Layout::default()
             .direction(Direction::Horizontal)
             .constraints(vec![Constraint::Fill(1), Constraint::Fill(1)])
-            .split(queue_stat_pane).as_ref().try_into().unwrap();
+            .split(eval_queue_stat_pane).as_ref().try_into().unwrap();
+
+        let [reval_queue_stat_name_pane, reval_queue_stat_value_pane] = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints(vec![Constraint::Fill(1), Constraint::Fill(1)])
+            .split(reval_queue_stat_pane).as_ref().try_into().unwrap();
         let [board_pieces_name_pane, board_pieces_value_pane] = Layout::default()
             .direction(Direction::Horizontal)
             .constraints(vec![Constraint::Percentage(50); 2])
@@ -265,15 +270,22 @@ impl App {
             .constraints(vec![Constraint::Percentage(50); 2])
             .split(positions_evaluated_pseudo_pane).as_ref().try_into().unwrap();
 
-        frame.render_widget(Paragraph::new("Queue:"), queue_stat_name_pane);
-        // let queue_length = {
-        //     let mut queue_length = String::from("{");
-            // let mut count = 0;
-        frame.render_widget(Paragraph::new(format!("{}", self.positions_to_reevaluate.len().separate_with_commas())).alignment(Alignment::Right), queue_stat_value_pane);
-        //     queue_length += "}";
-        //     queue_length
-        // };
-        // frame.render_widget(Paragraph::new(queue_length), queue_stat_value_pane);
+        frame.render_widget(Paragraph::new("Reval Queue:"), reval_queue_stat_pane);
+        let mut length = 0;
+        for i in 0..self.thread_stats.len() {
+            let l = self.positions_to_reevaluate.queues[i].length.read().unwrap();
+            length += *l;
+        }
+        frame.render_widget(Paragraph::new(format!("{}", length.separate_with_commas())).alignment(Alignment::Right), reval_queue_stat_value_pane);
+
+        frame.render_widget(Paragraph::new("Eval Queue:"), eval_queue_stat_name_pane);
+        let lengths = self.positions_to_evaluate.lengths();
+        let mut lengths_string = String::from("{");
+        for length in lengths.iter() {
+            lengths_string += &format!("{}: {}, ", length.0, length.1.separate_with_commas());
+        }
+        lengths_string += "}";
+        frame.render_widget(Paragraph::new(lengths_string).alignment(Alignment::Right), eval_queue_stat_value_pane);
 
         frame.render_widget(Paragraph::new("Board Pieces:"), board_pieces_name_pane);
         let len = {
@@ -379,8 +391,10 @@ impl App {
                 let run_lock = self.run_lock.clone();
                 let positions_to_reevaluate = self.positions_to_reevaluate.clone();
                 let positions = self.positions.clone();
+                let mut index = 0;
                 handles.push(std::thread::Builder::new().name(format!("reevaluation_engine_{}", i)).spawn(move || {
-                    reevaluation_engine(run_lock, positions_to_reevaluate, positions);
+                    reevaluation_engine(run_lock, positions_to_reevaluate, positions, index);
+                    index += 1;
                 }));
             }
             let editing = self.editing.clone();
@@ -431,10 +445,11 @@ impl App {
     }
 
     fn run_engine(&self, thread_count: usize, receiver_positions_to_reevaluate: Receiver<Board>) {
-        self.positions_to_evaluate.queue(vec![PositionToEvaluate{ value: (None, INITIAL_BOARD, 0, 0) }]);
-        
+        log!("Running engine");
+        self.positions_to_evaluate.queue(0, vec![PositionToEvaluate{ value: (None, INITIAL_BOARD, 0, 0) }]);
+        log!("queued");
         let mut threads: Vec<JoinHandle<()>> = Vec::new();
-        // println!("Starting {} threads", cpu_count);
+        log!("Starting {} threads", thread_count);
         for i  in 0..self.thread_stats.len() {
             let app = self.clone();
             let run_lock = self.run_lock.clone();
@@ -443,6 +458,7 @@ impl App {
             }).unwrap();
             threads.push(join_handle);
         }
+        log!("threads started");
         // {
         //     let positions = self.positions.clone();
         //     let positions_to_reevaluate = self.positions_to_reevaluate.clone();

@@ -1,9 +1,9 @@
 use std::{collections::HashSet, sync::{Arc, Mutex}};
 
-use crate::core::{board::Board, queue::{DistributedQueue, Queue}, set::Set};
+use crate::core::{board::Board, queue::{DistributedQueue, Queue}, set::Set, weighted_queue::DistributedWeightedQueue};
 
-pub type PositionsToEvaluate = DistributedQueue<PositionToEvaluate>;
-pub type PositionsToReevaluate = Queue<Board>;
+pub type PositionsToEvaluate = DistributedWeightedQueue<PositionToEvaluate>;
+pub type PositionsToReevaluate = DistributedQueue<(usize, Board)>;
 
 #[derive(Clone, Copy)]
 pub struct PositionToEvaluate {

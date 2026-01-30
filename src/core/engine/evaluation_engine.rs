@@ -1,29 +1,18 @@
 use std::{sync::{Arc, RwLock, mpsc::Sender}, thread::sleep, time::Duration};
 
-use crate::{App, core::{board::Board, board_state::BoardState, engine::structs::{PositionToEvaluate, PositionsToReevaluate}, map::{PointerToBoard, Presence}}, headless};
+use crate::{App, core::{board::Board, board_state::BoardState, engine::structs::{PositionToEvaluate, PositionsToReevaluate}, map::{PointerToBoard, Presence}}, headless, log};
 pub static TIMED: RwLock<bool> = RwLock::new(false);
 
 pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App) {
     let timed: bool = *TIMED.read().unwrap();
     // while time elapsed is less than 10 seconds
-    headless!("Evaluation engine started");
+    log!("Evaluation engine started");
     let start_time = std::time::Instant::now();
-    // while start_time.elapsed() < RUN_DURATION {
     let positions_to_evaluate = app.positions_to_evaluate.clone();
     let positions = app.positions.clone();
     let positions_to_reevaluate = app.positions_to_reevaluate.clone();
-    // loop {
-    //     {
-    //         *(app.thread_stats[index].running_status.write().unwrap()) = false;
-    //     }
-
-    //     std::thread::sleep(Duration::from_millis(2000));
-    //     {
-    //         *(app.thread_stats[index].running_status.write().unwrap()) = true;
-    //     }
-    //     std::thread::sleep(Duration::from_millis(2000));
-    // }
     loop {
+        // sleep(Duration::from_millis(500));
         if timed {
             if start_time.elapsed() > Duration::from_secs(10) {
                 return;
@@ -42,8 +31,25 @@ pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App) {
         }
         // println!("Evaluation engine running");
         // let position = positions_to_evaluate.dequeue(index);
-        for position in positions_to_evaluate.dequeue(index) {
-            let (previous_board, board, board_depth, _) = position.value;
+        let (board_depth, positions_to_evaluate_list) = {
+            let mut c = 0;
+            loop {
+                if c > 10 {
+                    return;
+                }
+                match positions_to_evaluate.dequeue_optional(index) {
+                    Some(value) => {
+                        break value
+                    }
+                    None => {
+                        sleep(Duration::from_millis(100));
+                        c += 1;
+                    }
+                }
+            }
+        };
+        for position in positions_to_evaluate_list {
+            let (previous_board, board, _, _) = position.value;
             headless!("Got board");
             // println!("Evaluation engine dequeued: {}", engine_id);
             // headless!("Checking if board is present");
@@ -77,8 +83,8 @@ pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App) {
                                 writable_board_state.previous_moves.write().unwrap().insert(previous_board);
                             }
                             {
-                                positions_to_reevaluate.remove(previous_board);
-                                positions_to_reevaluate.add(board, board_depth);
+                                // positions_to_reevaluate.remove(previous_board);
+                                positions_to_reevaluate.queue(vec!((board_depth, board)));
                             }
                         },
                         _ => {}
@@ -100,7 +106,7 @@ pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App) {
                             // }
                             next_boards.push(PositionToEvaluate{ value: (Some(board), next_board, board_depth + 1, evaluated_board_state.0.get_score()) });
                         }
-                        positions_to_evaluate.queue(next_boards);
+                        positions_to_evaluate.queue(board_depth+1, next_boards);
                     // }
     
                     // println!("Evaluation engine inserted");
