@@ -14,7 +14,7 @@ pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App) {
     loop {
         // sleep(Duration::from_millis(500));
         if timed {
-            if start_time.elapsed() > Duration::from_secs(10) {
+            if start_time.elapsed() > Duration::from_secs(2) {
                 return;
             }
         }

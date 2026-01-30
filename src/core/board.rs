@@ -313,13 +313,12 @@ impl Board {
                     } else {
                         black_pawns = black_pawns | (1 << 63-i);
                     }
+                }
+                let index = (piece_type >> 3) - 1;
+                if get_color(piece) == WHITE {
+                    white_major[index as usize] = white_major[index as usize] + 1;
                 } else {
-                    let index = (piece_type >> 3) - 1;
-                    if get_color(piece) == WHITE {
-                        white_major[index as usize] = white_major[index as usize] + 1;
-                    } else {
-                        black_major[index as usize] = black_major[index as usize] + 1;
-                    }
+                    black_major[index as usize] = black_major[index as usize] + 1;
                 }
             }
         }
@@ -380,6 +379,71 @@ impl Board {
     }
 }
 
+pub fn can_come_after(source: &PieceArrangement, destination: &PieceArrangement) -> bool {
+    let mut extra_pieces = 0;
+    for i in 0..6 {
+        if i == (PAWN >> 3) as usize {
+            continue;
+        }
+        if destination.major_pieces[i] > source.major_pieces[i] {
+            extra_pieces += destination.major_pieces[i] - source.major_pieces[i];
+        }
+    }
+    if destination.major_pieces[(PAWN >> 3) as usize - 1] > source.major_pieces[(PAWN >> 3) as usize - 1] {
+        return false;
+    }
+    let missing_pawns = source.major_pieces[(PAWN >> 3) as usize - 1] - destination.major_pieces[(PAWN >> 3) as usize - 1];
+    if missing_pawns < extra_pieces {
+        return false;
+    }
+    let source_pawns = convert_u64_pawns_to_pawn_position_vector(source.pawns);
+    let destination_pawns = convert_u64_pawns_to_pawn_position_vector(destination.pawns);
+    return match_pawns(source_pawns, destination_pawns);
+}
+
+fn match_pawns(source: Vec<u8>, destination: Vec<u8>) -> bool {
+    for destination_index in 0..destination.len() {
+        let destination_pawn = destination[destination_index];
+        for source_index in 0..source.len() {
+            let source_pawn = source[source_index];
+            let destination_pawn_rank = destination_pawn / 8;
+            let destination_pawn_file = destination_pawn % 8;
+            let source_pawn_rank = source_pawn / 8;
+            let source_pawn_file = source_pawn % 8;
+
+            if source_pawn_rank > destination_pawn_rank {
+                continue;
+            }
+            let rank_difference = destination_pawn_rank - source_pawn_rank;
+            let file_start = (source_pawn_file - rank_difference).clamp(0, 7);
+            let file_end = (source_pawn_file + rank_difference).clamp(0, 7);
+            if file_start <= destination_pawn_file && destination_pawn_file <= file_end {
+                let mut new_destination = destination.clone();
+                new_destination.remove(destination_index);
+                if new_destination.len() == 0 {
+                    return true;
+                }
+                let mut new_source = source.clone();
+                new_source.remove(source_index);
+                return match_pawns(new_source, new_destination);
+            }
+        }
+    }
+    return false;
+}
+
+
+
+fn convert_u64_pawns_to_pawn_position_vector(pawns: u64) -> Vec<u8> {
+    let mut bool_pawns = Vec::new();
+    for i in 0..64 {
+        if (pawns & (1 << i)) != 0 {
+            bool_pawns.push(i);
+        }
+    }
+    bool_pawns
+}
+
 fn compare_u8_6(a: &[u8; 6], b: &[u8; 6]) -> std::cmp::Ordering {
     for i in 0..6 {
         if a[i] > b[i] {
@@ -391,10 +455,20 @@ fn compare_u8_6(a: &[u8; 6], b: &[u8; 6]) -> std::cmp::Ordering {
     return std::cmp::Ordering::Equal;
 }
 
-#[derive(Eq, PartialEq, Hash)]
+#[derive(Eq, PartialEq, Hash, Clone)]
 pub struct BoardArrangement {
     higher: PieceArrangement,
     lower: PieceArrangement,
+}
+
+pub fn can_come_after_board_arrangement(source: &BoardArrangement, destination: &BoardArrangement) -> bool {
+    if can_come_after(&source.higher, &destination.higher) && can_come_after(&source.lower, &destination.lower) {
+        return true;
+    }
+    if can_come_after(&source.lower, &destination.higher) && can_come_after(&source.higher, &destination.lower) {
+        return true;
+    }
+    return false;
 }
 
 impl Display for BoardArrangement {
@@ -403,7 +477,7 @@ impl Display for BoardArrangement {
     }
 }
 
-#[derive(Eq, PartialEq, Hash)]
+#[derive(Eq, PartialEq, Hash, Clone)]
 pub struct PieceArrangement {
     pawns: u64,
     major_pieces: [u8; 6],

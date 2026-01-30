@@ -1,6 +1,7 @@
 mod core;
 
-use std::{sync::{Arc, Mutex, RwLock, mpsc::{self, Receiver, Sender}}, thread::JoinHandle, time::Duration};
+use std::{sync::{Arc, Mutex, RwLock, mpsc::{self, Receiver, Sender}}, thread::{JoinHandle, sleep}, time::Duration};
+use humantime::format_duration;
 use ratatui::{crossterm::event::{read, poll, Event, KeyCode}, layout::{Alignment, Constraint, Direction, Layout, Margin, Rect}, widgets::{Block, Borders, Paragraph}, DefaultTerminal, Frame};
 use regex::Regex;
 use thousands::Separable;
@@ -8,41 +9,32 @@ use tui_input::{backend::crossterm::EventHandler, Input};
 
 use crate::core::{board::{self, *}, board_state::BoardState, engine::{evaluation_engine::*, reevaluation_engine::*, structs::{PositionToEvaluate, PositionsToEvaluate, PositionsToReevaluate}}, initial_board::*, log::{ENABLE_LOG, FILENAME}, map::{PAGE_BOARD_COUNT, Positions}, piece::*, queue::*, reevaluation_queue::ReevaluationQueue, set::Set, weighted_queue::DistributedWeightedQueue};
 
-// fn prune_engine(run_lock: Arc<RwLock<()>>, positions: Positions, positions_to_evaluate: PositionsToEvaluate, root_board: Board) {
-//     let _unused = run_lock.write().unwrap();
-//     // println!("Pruning engine started");
-//     let evaluated_boards = {
-//         let mut evaluated_boards = positions.keys();
-//         let mut parent_boards = vec![root_board];
-//         let mut child_boards = vec![];
-//         let mut removed = true;
-//         while parent_boards.len() > 0 && removed {
-//             // println!("Evaluated boards: {}", evaluated_boards.len());
-//             removed = false;
-//             for parent_board in parent_boards.iter() {
-//                 let was_present = evaluated_boards.remove(parent_board);
-//                 if was_present {
-//                     removed = true;
-//                 }
-//                 if let Some(board_state) = positions.get(parent_board) {
-//                     let board_state = board_state.read().unwrap();
-//                     child_boards.extend(board_state.next_moves.iter().collect::<Vec<&Board>>());
-//                 }
-//             }
-//             parent_boards = child_boards;
-//             child_boards = vec![];
-//         }
-//         evaluated_boards
-//     };
-//     positions.remove_keys(evaluated_boards.iter().cloned().collect::<Vec<Board>>());
-//     // println!("Removed unreachable boards from positions");
-//     let removed_from_queue = 0;
-//     // positions_to_evaluate.prune(&evaluated_boards);
-//     // println!("Removed unreachable boards from queue");
-//     // println!("Number of removed boards: {}", evaluated_boards.len());
-//     // println!("Number of removed boards from queue: {}", removed_from_queue);
-//     // println!("Pruning engine completed");
-// }
+fn prune_vectors(positions: Positions, count: usize) -> Vec<Vec<BoardArrangement>> {
+    let board_arrangements: Vec<BoardArrangement> = {
+        let writable_positions = positions.map.read().unwrap();
+        writable_positions.keys().map(|board_arrangement| board_arrangement.clone()).collect()
+    };
+    let mut vectors = Vec::with_capacity(count);
+    for _ in 0..count {
+        vectors.push(Vec::new());
+    }
+    let mut counter = 0;
+    for board_arrangement in board_arrangements {
+        vectors[counter].push(board_arrangement);
+        counter = (counter + 1) % count;
+    }
+    return vectors;
+}
+
+fn prune_engine(root_board: Board, board_arrangements: Vec<BoardArrangement>, sender: Sender<BoardArrangement>) {
+    let current_board_arrangement = root_board.get_board_arrangement();
+    for board_arrangement in board_arrangements {
+        if !can_come_after_board_arrangement(&board_arrangement, &current_board_arrangement) {
+            sender.send(board_arrangement);
+        }
+    }
+    log!("Ended pruning");
+}
 
 fn main() {
     unsafe {
@@ -91,6 +83,8 @@ fn main() {
         input: Arc::new(RwLock::new(Input::new(String::from("")))),
         editing: Arc::new(RwLock::new(true)),
         prompt: String::from("Enter move:"),
+        start_time: std::time::Instant::now(),
+        status: Arc::new(RwLock::new(String::from("Evaluating..."))),
     };
 
     for _ in 0..thread_count {
@@ -117,6 +111,8 @@ struct App {
     input: Arc<RwLock<Input>>,
     editing: Arc<RwLock<bool>>,
     prompt: String,
+    start_time: std::time::Instant,
+    status: Arc<RwLock<String>>,
 }
 
 #[derive(Clone)]
@@ -296,7 +292,7 @@ impl App {
         frame.render_widget(Paragraph::new(format!("{}", self.positions.len().separate_with_commas())).alignment(Alignment::Right), positions_evaluated_value_pane);
         frame.render_widget(Paragraph::new("Positions evaluated pseudo:"), positions_evaluated_pseudo_name_pane);
         frame.render_widget(Paragraph::new(format!("{}", self.positions_evaluated_acount.read().unwrap().separate_with_commas())).alignment(Alignment::Right), positions_evaluated_pseudo_value_pane);
-        frame.render_widget(Paragraph::new(format!("Engine status: {}", self.frame_count)), right_pane);
+        frame.render_widget(Paragraph::new(format!("Time: {:?} Engine status: {}", self.start_time.elapsed().as_secs(), self.status.read().unwrap())), right_pane);
         self.frame_count = self.frame_count + 1;
     }
 
@@ -385,23 +381,58 @@ impl App {
                     return;
                 }
             };
-
-            let mut handles = vec![];
-            for i in 0..self.thread_count {
-                let run_lock = self.run_lock.clone();
-                let positions_to_reevaluate = self.positions_to_reevaluate.clone();
-                let positions = self.positions.clone();
-                let mut index = 0;
-                handles.push(std::thread::Builder::new().name(format!("reevaluation_engine_{}", i)).spawn(move || {
-                    reevaluation_engine(run_lock, positions_to_reevaluate, positions, index);
-                    index += 1;
-                }));
-            }
             let editing = self.editing.clone();
+            let app = self.clone();
             std::thread::Builder::new().name(format!("reevaluation_engine_main")).spawn(move || {
-                for handle in handles {
-                    handle.unwrap().join().unwrap();
+                {
+                    let app = app.clone();
+                    let mut handles = vec![];
+                    {
+                        *app.status.write().unwrap() = String::from("Creating vectors...");
+                    }
+                    let mut vectors = prune_vectors(app.positions.clone(), app.thread_count-1);
+                    {
+                        *app.status.write().unwrap() = String::from("Pruning positions...");
+                    }
+                    let (sender, receiver) = mpsc::channel::<BoardArrangement>();
+                    for i in 0..app.thread_count-1 {
+                        let board_arrangements = vectors.pop().unwrap();
+                        let current_board = app.current_board.lock().unwrap().clone();
+                        let sender = sender.clone();
+                        log!("Spawning prune_engine_{}", board_arrangements.len());
+                        handles.push(std::thread::Builder::new().name(format!("prune_engine_{}", i)).spawn(move || {
+                            prune_engine(current_board, board_arrangements, sender);
+                        }));
+                    }
+                    handles.push(std::thread::Builder::new().name(format!("send_board_arrangements")).spawn(move || {
+                        remove_board_arrangements(app.positions.clone(), receiver);
+                    }));
+                    drop(sender);
+                    for handle in handles {
+                        handle.unwrap().join().unwrap();
+                    }
                 }
+
+                // {
+                //     {
+                //         *app.status.write().unwrap() = String::from("Re-evaluating positions...");
+                //     }
+                //     let mut handles = vec![];
+                //     for i in 0..app.thread_count {
+                //         let run_lock = app.run_lock.clone();
+                //         let positions_to_reevaluate = app.positions_to_reevaluate.clone();
+                //         let positions = app.positions.clone();
+                //         handles.push(std::thread::Builder::new().name(format!("reevaluation_engine_{}", i)).spawn(move || {
+                //             reevaluation_engine(run_lock, positions_to_reevaluate, positions, i);
+                //         }));
+                //     }
+                //     for handle in handles {
+                //         handle.unwrap().join().unwrap();
+                //     }
+                //     {
+                //         *app.status.write().unwrap() = String::from("Evaluating...");
+                //     }
+                // }
                 let mut editing = editing.write().unwrap();
                 *editing = true;
             }).unwrap();
@@ -481,5 +512,20 @@ fn scratch() {
     let t = board.get_evaluation();
     for n in t.1.iter()  {
         println!("{}", n.inverted());
+    }
+}
+
+fn remove_board_arrangements(positions: Positions, receiver: Receiver<BoardArrangement>) {
+    let mut writable_positions = positions.map.write().unwrap();
+    loop {
+        let b = receiver.recv();
+        match b {
+            Ok(b) => {
+                writable_positions.remove(&b);
+            }
+            Err(e) => { break; }
+        }
+        // drop(writable_positions);
+        // sleep(Duration::from_millis(10));
     }
 }
