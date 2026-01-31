@@ -1,6 +1,10 @@
-use std::{cmp::Ordering, thread::{sleep}, time::Duration};
+use std::{cmp::Ordering, sync::RwLock, thread::sleep, time::Duration};
 
-use crate::{core::{app::App, chess::board_state::NextBestMove, engine::structs::PositionsToReevaluate, structs::map::Positions}, log};
+use crate::{core::{app::App, chess::{board::{Board, BoardArrangement}, board_state::NextBestMove}, engine::structs::PositionsToReevaluate, structs::map::Positions}, log};
+use std::sync::LazyLock;
+
+pub static move_board: LazyLock<RwLock<Board>> = LazyLock::new(|| RwLock::new(Board::new()));
+pub static move_board_arrangement: LazyLock<RwLock<BoardArrangement>> = LazyLock::new(|| RwLock::new(BoardArrangement::new()));
 
 pub fn reevaluation_engine(app: App) {
     {
@@ -95,7 +99,7 @@ pub fn reevaluation_thread(positions_to_reevaluate: PositionsToReevaluate, posit
                         match *current_next_best_move {
                             Some(ref mut current_next_best_move) => {
                                 if new_next_best_move.evaluation.compare_to(&current_next_best_move.evaluation) == Ordering::Greater ||
-                                    new_next_best_move.board == current_next_best_move.board {
+                                    (new_next_best_move.board == current_next_best_move.board && new_next_best_move.evaluation != current_next_best_move.evaluation) {
                                     *current_next_best_move = new_next_best_move;
                                     should_reevaluate = true;
                                 }
@@ -112,8 +116,6 @@ pub fn reevaluation_thread(positions_to_reevaluate: PositionsToReevaluate, posit
                         let board_state = readable_board_arrangement_positions.get(pointer_to_board.index).read().unwrap();
                         let previous_moves = board_state.previous_moves.read().unwrap();
                         positions_to_reevaluate.queue(previous_moves.iter().map(|pos| (depth-1, pos.clone())).collect());
-                    } else {
-                        log!("Not re-evaluating");
                     }
                 }
             }

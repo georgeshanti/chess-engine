@@ -1,6 +1,6 @@
 mod core;
 
-use crate::core::{app::App, log::FILENAME};
+use crate::core::{app::App, chess::board::{Board, BoardArrangement}, engine::reevaluation_engine::{move_board, move_board_arrangement}, log::FILENAME};
 
 fn main() {
     unsafe {
@@ -27,6 +27,12 @@ fn main() {
             },
             Err(_) => {},
         };
+
+        let board: Board = serde_json::from_str("{\"pieces\":[144,0,160,176,168,160,152,144,136,136,136,136,136,136,136,136,0,0,152,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,200,200,0,0,0,0,0,0,0,0,0,0,0,200,200,200,0,0,200,200,200,208,216,224,240,232,224,216,208]}").unwrap();
+        *move_board.write().unwrap() = board;
+
+        let board_arrangement: BoardArrangement = serde_json::from_str("{\"higher\":{\"pawns\":402712320,\"major_pieces\":[8,2,2,2,1,1]},\"lower\":{\"pawns\":65280,\"major_pieces\":[8,2,2,2,1,1]}}").unwrap();
+        *move_board_arrangement.write().unwrap() = board_arrangement;
     }
 
     // scratch();

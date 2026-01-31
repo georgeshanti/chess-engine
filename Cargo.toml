@@ -13,6 +13,7 @@ chrono = "*"
 humantime = "2.1.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+serde-big-array = "0.5.1"
 
 [profile.release]
 debug = true

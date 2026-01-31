@@ -5,9 +5,11 @@ use crate::core::chess::piece::*;
 use crate::core::chess::board_state::*;
 use crate::log;
 use serde::{Serialize, Deserialize};
+use serde_big_array::BigArray;
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, Debug)]
 pub struct Board {
+    #[serde(with = "BigArray")]
     pub pieces: [u8; 64],
 }
 
@@ -426,7 +428,9 @@ fn match_pawns(source: Vec<u8>, destination: Vec<u8>) -> bool {
                 }
                 let mut new_source = source.clone();
                 new_source.remove(source_index);
-                return match_pawns(new_source, new_destination);
+                if match_pawns(new_source, new_destination) {
+                    return true;
+                }
             }
         }
     }
@@ -458,8 +462,17 @@ fn compare_u8_6(a: &[u8; 6], b: &[u8; 6]) -> std::cmp::Ordering {
 
 #[derive(Eq, PartialEq, Hash, Clone, Serialize, Deserialize, Debug)]
 pub struct BoardArrangement {
-    higher: PieceArrangement,
-    lower: PieceArrangement,
+    pub higher: PieceArrangement,
+    pub lower: PieceArrangement,
+}
+
+impl BoardArrangement {
+    pub fn new() -> Self {
+        BoardArrangement {
+            higher: PieceArrangement { pawns: 0, major_pieces: [0; 6] },
+            lower: PieceArrangement { pawns: 0, major_pieces: [0; 6] },
+        }
+    }
 }
 
 pub fn can_come_after_board_arrangement(source: &BoardArrangement, destination: &BoardArrangement) -> bool {

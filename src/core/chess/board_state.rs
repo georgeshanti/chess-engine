@@ -20,17 +20,21 @@ impl Evaluation {
     pub fn compare_to(self: &Self, other: &Self) -> Ordering {
         match (self.result, other.result) {
             (PositionResult::Win, PositionResult::Win) => self.score.cmp(&other.score),
+            (PositionResult::Win, PositionResult::Scored) => Ordering::Greater,
+            (PositionResult::Win, PositionResult::Draw) => Ordering::Greater,
+            (PositionResult::Win, PositionResult::Loss) => Ordering::Greater,
+            (PositionResult::Scored, PositionResult::Win) => Ordering::Less,
             (PositionResult::Scored, PositionResult::Scored) => self.score.cmp(&other.score),
-            (PositionResult::Draw, PositionResult::Draw) => Ordering::Equal,
-            (PositionResult::Loss, PositionResult::Loss) => self.score.cmp(&other.score).reverse(),
-            (PositionResult::Win, _) => Ordering::Greater,
-            (_, PositionResult::Win) => Ordering::Less,
-            (PositionResult::Scored, _) => Ordering::Greater,
-            (_, PositionResult::Scored) => Ordering::Less,
-            (PositionResult::Draw, _) => Ordering::Greater,
-            (_, PositionResult::Draw) => Ordering::Less,
-            (PositionResult::Loss, _) => Ordering::Less,
-            (_, PositionResult::Loss) => Ordering::Greater,
+            (PositionResult::Scored, PositionResult::Draw) => Ordering::Greater,
+            (PositionResult::Scored, PositionResult::Loss) => Ordering::Greater,
+            (PositionResult::Draw, PositionResult::Win) => Ordering::Less,
+            (PositionResult::Draw, PositionResult::Scored) => Ordering::Less,
+            (PositionResult::Draw, PositionResult::Draw) => other.score.cmp(&self.score),
+            (PositionResult::Draw, PositionResult::Loss) => Ordering::Greater,
+            (PositionResult::Loss, PositionResult::Win) => Ordering::Less,
+            (PositionResult::Loss, PositionResult::Scored) => Ordering::Less,
+            (PositionResult::Loss, PositionResult::Draw) => Ordering::Less,
+            (PositionResult::Loss, PositionResult::Loss) => other.score.cmp(&self.score),
         }
     }
 

@@ -1,4 +1,4 @@
-use std::{sync::{Arc, Mutex, RwLock, mpsc::Receiver}, thread::JoinHandle, time::Duration};
+use std::{sync::{Arc, Mutex, RwLock, mpsc::Receiver}, thread::{JoinHandle, sleep}, time::Duration};
 
 use ratatui::{Frame, crossterm::event::{Event, KeyCode, poll, read}, layout::{Alignment, Constraint, Direction, Layout, Margin, Rect}, widgets::{Block, Borders, Paragraph}};
 use regex::Regex;
@@ -7,11 +7,12 @@ use tui_input::{Input, backend::crossterm::EventHandler};
 
 use crate::{core::{chess::{board::Board, initial_board::INITIAL_BOARD, piece::{BLACK, EMPTY, PRESENT, get_color, get_presence}}, engine::{evaluation_engine::evaluation_engine, prune_engine::prune_engine, reevaluation_engine::reevaluation_engine, structs::{PositionToEvaluate, PositionsToEvaluate, PositionsToReevaluate}}, structs::{map::Positions, queue::DistributedQueue, weighted_queue::DistributedWeightedQueue}}, log};
 
+use serde_json;
 
 
 #[derive(Clone)]
 pub struct App {
-    pub current_board: Arc<Mutex<Board>>,
+    pub current_board: Arc<RwLock<Board>>,
     pub positions: Positions,
     pub positions_to_evaluate: PositionsToEvaluate,
     pub positions_to_reevaluate: PositionsToReevaluate,
@@ -22,7 +23,7 @@ pub struct App {
     pub frame_count: usize,
     pub input: Arc<RwLock<Input>>,
     pub editing: Arc<RwLock<bool>>,
-    pub prompt: String,
+    pub prompt: Arc<RwLock<String>>,
     pub start_time: std::time::Instant,
     pub status: Arc<RwLock<String>>,
     pub current_depth: Arc<RwLock<usize>>
@@ -36,17 +37,17 @@ impl App {
             positions_to_evaluate: DistributedWeightedQueue::new(thread_count),
             positions_to_reevaluate: DistributedQueue::new(thread_count),
             run_lock:  Arc::new(RwLock::new(())),
-            current_board: Arc::new(Mutex::new(INITIAL_BOARD)),
+            current_board: Arc::new(RwLock::new(INITIAL_BOARD)),
             thread_stats: Vec::with_capacity(thread_count),
             thread_count: thread_count,
             positions_evaluated_acount: Arc::new(RwLock::new(0)),
             frame_count: 0,
             input: Arc::new(RwLock::new(Input::new(String::from("")))),
             editing: Arc::new(RwLock::new(true)),
-            prompt: String::from("Enter move:"),
+            prompt: Arc::new(RwLock::new(String::from("Enter move:"))),
             start_time: std::time::Instant::now(),
             status: Arc::new(RwLock::new(String::from("Evaluating..."))),
-            current_depth: Arc::new(RwLock::new(5)),
+            current_depth: Arc::new(RwLock::new(3)),
         };
     
         for _ in 0..thread_count {
@@ -155,9 +156,9 @@ impl App {
             App::draw_stat(frame, i, &self.thread_stats[i], status_pane[i]);
         }
 
-        frame.render_widget(Paragraph::new(format!("{}", self.current_board.lock().unwrap())), board_pane.inner(Margin::new(1, 1)));
+        frame.render_widget(Paragraph::new(format!("{}", self.current_board.read().unwrap())), board_pane.inner(Margin::new(1, 1)));
         frame.render_widget(Block::default().borders(Borders::ALL), prompt_pane);
-        frame.render_widget(Paragraph::new(self.prompt.clone()), prompt_pane.inner(Margin::new(1, 0)));
+        frame.render_widget(Paragraph::new(self.prompt.read().unwrap().clone()), prompt_pane.inner(Margin::new(1, 0)));
         frame.render_widget(Paragraph::new(format!("{}", self.input.read().unwrap().value())), prompt_pane.inner(Margin::new(1, 1)));
 
         // frame.render_widget(Block::default().borders(Borders::ALL), vertical_panes[1]);
@@ -241,13 +242,15 @@ impl App {
     }
 
     fn process_prompt(&mut self) {
-            let mut current_board = self.current_board.lock().unwrap();
+            let mut current_board = {
+                *self.current_board.read().unwrap()
+            };
             let re = Regex::new(r"([a-z])(\d)-([a-z])(\d)").unwrap();
             let mut input = self.input.write().unwrap();
             let captures = match re.captures(input.value()){
                 Some(captures) => captures,
                 None => {
-                    self.prompt = String::from("Invalid syntax. Enter move:");
+                    *self.prompt.write().unwrap() = String::from("Invalid syntax. Enter move:");
                     input.reset();
                     return;
                 }
@@ -263,7 +266,7 @@ impl App {
 
             if get_presence(source_piece) == EMPTY || get_color(source_piece) == BLACK || !(get_presence(target_piece) == EMPTY || get_color(target_piece) == BLACK) {
                 log!("{}, {}, {}, {}. Syntax error.", get_presence(source_piece) == EMPTY, get_color(source_piece) == BLACK, get_presence(target_piece) == EMPTY, get_color(target_piece) == BLACK);
-                self.prompt = String::from("Invalid move. Enter move:");
+                *self.prompt.write().unwrap() = String::from("Invalid move. Enter move:");
                 input.reset();
                 return;
             }
@@ -271,7 +274,7 @@ impl App {
             log!("Processing prompt: Valid pieces present in source and target squares");
             log!("Processing prompt: current_board: {:?} \n{}", current_board.pieces, current_board);
             let next_board = {
-                let current_board_state = self.positions.get(&*current_board);
+                let current_board_state = self.positions.get(&current_board);
                 if let Some(pointer_to_board) = current_board_state {
                     log!("Processing prompt: Found board state for current position");
 
@@ -283,7 +286,7 @@ impl App {
                     for next_move in board_state.next_moves.iter() {
                         let source_piece = next_move.get(7-from_rank, 7-from_file);
                         let target_piece = next_move.get(7-to_rank, 7-to_file);
-                        log!("Processing prompt: candidate:\n{}", next_move.inverted());
+                        // log!("Processing prompt: candidate:\n{}", next_move.inverted());
                         if get_presence(source_piece) == EMPTY && get_presence(target_piece) == PRESENT && get_color(target_piece) == BLACK {
                             next_board = Some(*next_move);
                             break;
@@ -293,23 +296,26 @@ impl App {
                         Some(next_board) => next_board,
                         None => {
                             log!("Processing prompt: Could not find move corresponding to prompt");
-                            self.prompt = String::from("Invalid move 2. Enter move:");
+                            *self.prompt.write().unwrap() = String::from("Invalid move 2. Enter move:");
                             input.reset();
                             return;
                         }
                     }
                 } else {
                     log!("Processing prompt: Could not find board state for current position");
-                    self.prompt = String::from("Invalid move 3. Enter move:");
+                    *self.prompt.write().unwrap() = String::from("Invalid move 3. Enter move:");
                     input.reset();
                     return;
                 }
             };
+            drop(input);
+            log!("Position: {}", serde_json::to_string(&next_board).unwrap());
+            log!("Position Board Arrangement: {}", serde_json::to_string(&next_board.get_board_arrangement()).unwrap());
             let editing = self.editing.clone();
             let app = self.clone();
             let run_lock_lock = app.run_lock.write().unwrap();
             let app = self.clone();
-            std::thread::Builder::new().name(format!("reevaluation_engine_main")).spawn(move || {
+            let _ = std::thread::Builder::new().name(format!("reevaluation_engine_main")).spawn(move || {
                 {
                     let app = app.clone();
                     std::thread::spawn(move || {
@@ -325,50 +331,51 @@ impl App {
                 }
                 let mut editing = editing.write().unwrap();
                 *editing = true;
-            }).unwrap();
+            }).unwrap().join();
             
-            // {
-            //     let next_board_state = self.positions.get(&next_board);
-            //     match next_board_state {
-            //         Some(pointer_to_board) => {
+            {
+                let mut input = self.input.write().unwrap();
+                let next_board_state = self.positions.get(&next_board);
+                match next_board_state {
+                    Some(pointer_to_board) => {
 
-            //             let board_arrangement_positions = pointer_to_board.ptr.upgrade().unwrap();
-            //             let readable_board_arrangement_positions = board_arrangement_positions.read().unwrap();
-            //             let next_board_state = readable_board_arrangement_positions.get(pointer_to_board.index).read().unwrap();
-            //             let next_best_move = next_board_state.next_best_move.read().unwrap();
-            //             match *next_best_move {
-            //                 None => {
-            //                     log!("Processing prompt: No next best move found for entered move's position");
-            //                     self.prompt = String::from("Have not evaluated position yet. Enter move:");
-            //                     input.reset();
-            //                     return;
-            //                 }
-            //                 Some(next_best_move) => {
-            //                     log!("Processing prompt: Setting current board to {}", next_best_move.board);
-            //                     log!("Setting current board to {}", next_best_move.board);
-            //                     *current_board = next_best_move.board;
-            //                     input.reset();
-            //                 }
-            //             }
-            //         },
-            //         None => {
-            //             // println!("Positions: {}", positions.len());
-            //             // println!("Depth: {}", DEPTH.lock().unwrap());
-            //             log!("Processing prompt: Could not find board state for entered move's position");
-            //             self.prompt = String::from("Have not evaluated position yet. Enter move:");
-            //             input.reset();
-            //             return;
-            //         }
-            //     }
-            // }
-            // let depth = {
-            //     let app = self.clone();
-            //     *(app.current_depth.read().unwrap())
-            // };
-            // {
-            //     let app = self.clone();
-            //     *(app.current_depth.write().unwrap()) = depth + 2;
-            // }
+                        let board_arrangement_positions = pointer_to_board.ptr.upgrade().unwrap();
+                        let readable_board_arrangement_positions = board_arrangement_positions.read().unwrap();
+                        let next_board_state = readable_board_arrangement_positions.get(pointer_to_board.index).read().unwrap();
+                        let next_best_move = next_board_state.next_best_move.read().unwrap();
+                        match *next_best_move {
+                            None => {
+                                log!("Processing prompt: No next best move found for entered move's position");
+                                *self.prompt.write().unwrap() = String::from("Cannot find next best move. Enter move:");
+                                input.reset();
+                                return;
+                            }
+                            Some(next_best_move) => {
+                                log!("Processing prompt: Setting current board to {}", next_best_move.board);
+                                log!("Setting current board to {}", next_best_move.board);
+                                *self.current_board.write().unwrap() = next_best_move.board;
+                                input.reset();
+                            }
+                        }
+                    },
+                    None => {
+                        // println!("Positions: {}", positions.len());
+                        // println!("Depth: {}", DEPTH.lock().unwrap());
+                        log!("Processing prompt: Could not find board state for entered move's position");
+                        *self.prompt.write().unwrap() = String::from("Have not evaluated position yet. Enter move:");
+                        input.reset();
+                        return;
+                    }
+                }
+            }
+            let depth = {
+                let app = self.clone();
+                *(app.current_depth.read().unwrap())
+            };
+            {
+                let app = self.clone();
+                *(app.current_depth.write().unwrap()) = depth + 2;
+            }
             drop(run_lock_lock);
     }
 

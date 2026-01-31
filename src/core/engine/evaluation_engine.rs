@@ -1,6 +1,6 @@
-use std::{sync::{Arc, RwLock}, thread::sleep, time::Duration};
+use std::{collections::HashSet, sync::{Arc, RwLock}, thread::sleep, time::Duration};
 
-use crate::{App, core::{engine::structs::{PositionToEvaluate}, structs::map::Presence}, log};
+use crate::{App, core::{chess::board::Board, engine::{reevaluation_engine::move_board, structs::PositionToEvaluate}, structs::map::Presence}, log};
 pub static TIMED: RwLock<bool> = RwLock::new(false);
 
 pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App) {
@@ -59,8 +59,18 @@ pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App) {
         // if board_depth > 2 {
         //     continue;
         // }
+        let mut skippable_set: HashSet<Board> = HashSet::new();
         for position in positions_to_evaluate_list {
             let (previous_board, board, _, _) = position.value;
+            if let Some(previous_board) = previous_board {
+                if skippable_set.contains(&previous_board) {
+                    continue;
+                }
+                if let None = positions.get(&previous_board) {
+                    skippable_set.insert(previous_board);
+                    continue;
+                }
+            }
             let pointer_to_board = positions.clone().edit(&board);
             match pointer_to_board {
                 Presence::Absent { value } => {
