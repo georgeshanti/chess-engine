@@ -1,4 +1,4 @@
-use crate::core::{chess::board::Board, structs::{queue::DistributedQueue, weighted_queue::DistributedWeightedQueue}};
+use crate::core::{chess::board::Board, structs::{cash::Cash, queue::DistributedQueue, weighted_queue::DistributedWeightedQueue}};
 
 pub type PositionsToEvaluate = DistributedWeightedQueue<PositionToEvaluate>;
 pub type PositionsToReevaluate = DistributedQueue<(usize, Board)>;
@@ -6,6 +6,18 @@ pub type PositionsToReevaluate = DistributedQueue<(usize, Board)>;
 #[derive(Clone, Copy)]
 pub struct PositionToEvaluate {
     pub value: (Option<Board>, Board, usize, i32)
+}
+
+impl Cash for PositionToEvaluate {
+    fn cash(self: &Self) -> u64 {
+        self.value.1.cash()
+    }
+}
+
+impl Cash for (usize, Board) {
+    fn cash(self: &Self) -> u64 {
+        self.1.cash()
+    }
 }
 
 impl PartialOrd for PositionToEvaluate {

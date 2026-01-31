@@ -1,6 +1,6 @@
 use std::{cmp::Ordering, sync::RwLock, thread::sleep, time::Duration};
 
-use crate::{core::{app::App, chess::{board::{Board, BoardArrangement}, board_state::NextBestMove}, engine::structs::PositionsToReevaluate, structs::map::Positions}, log};
+use crate::{core::{app::App, chess::{board::{Board, BoardArrangement}, board_state::NextBestMove}, engine::structs::PositionsToReevaluate, structs::map::{GroupedPositions, Positions}}, log};
 use std::sync::LazyLock;
 
 pub static move_board: LazyLock<RwLock<Board>> = LazyLock::new(|| RwLock::new(Board::new()));
@@ -28,7 +28,7 @@ pub fn reevaluation_engine(app: App) {
     }
 }
 
-pub fn reevaluation_thread(positions_to_reevaluate: PositionsToReevaluate, positions: Positions, index: usize) {
+pub fn reevaluation_thread(positions_to_reevaluate: PositionsToReevaluate, positions: GroupedPositions, index: usize) {
     loop {
         let value = {
             let mut count = 0;

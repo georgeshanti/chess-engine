@@ -1,15 +1,15 @@
 use std::{collections::HashSet, sync::{Arc, Condvar, Mutex, MutexGuard, RwLock}};
 
-use crate::core::chess::board::Board;
+use crate::core::{chess::board::Board, structs::cash::Cash};
 
 #[derive(Clone)]
-pub struct DistributedQueue<T> {
+pub struct DistributedQueue<T: Cash + Clone> {
     pub size: usize,
     pub current_node: Arc<Mutex<usize>>,
     pub queues: Vec<Queue<T>>,
 }
 
-impl<T: Clone> DistributedQueue<T> {
+impl<T: Clone + Cash> DistributedQueue<T> {
 
     pub fn new(size: usize) -> Self {
         let mut queue = DistributedQueue {
@@ -24,12 +24,23 @@ impl<T: Clone> DistributedQueue<T> {
     }
 
     pub fn queue(&self, value: Vec<T>) {
-        let current_node = {
-            let mut current_node = self.current_node.lock().unwrap();
-            let index_to_queue_to = *current_node;
-            *current_node = (*current_node + 1) % self.size;
-            index_to_queue_to
-        };
+        let mut vectors: Vec<Vec<T>> = Vec::with_capacity(self.size);
+        for _ in 0..self.size {
+            vectors.push(vec![]);
+        }
+        for val in value {
+            let index = (val.cash() % self.size as u64) as usize;
+            vectors[index].push(val);
+        }
+        for i in 0..vectors.len() {
+            self.queues[i].queue(vectors[i].clone());
+        }
+        // let current_node = {
+        //     let mut current_node = self.current_node.lock().unwrap();
+        //     let index_to_queue_to = *current_node;
+        //     *current_node = (*current_node + 1) % self.size;
+        //     index_to_queue_to
+        // };
         // let current_node = {
         //     let mut shortest_queue_length: Option<usize> = None;
         //     let mut shortest_queue_length_index = 0;
@@ -52,7 +63,7 @@ impl<T: Clone> DistributedQueue<T> {
         //     }
         //     shortest_queue_length_index
         // };
-        self.queues[current_node].queue(value);
+        // self.queues[current_node].queue(value);
     }
 
     pub fn dequeue(&self, i: usize) -> Vec<T> {

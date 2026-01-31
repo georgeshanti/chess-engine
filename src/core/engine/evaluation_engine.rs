@@ -71,7 +71,7 @@ pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App) {
                     continue;
                 }
             }
-            let pointer_to_board = positions.clone().edit(&board);
+            let pointer_to_board = positions.clone().edit(index, &board);
             match pointer_to_board {
                 Presence::Absent { value } => {
                     {

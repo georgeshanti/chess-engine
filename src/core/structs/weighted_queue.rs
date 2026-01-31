@@ -1,6 +1,6 @@
 use std::{collections::BTreeMap, sync::{Arc, Mutex, RwLock}};
 
-use crate::core::structs::queue::Queue;
+use crate::core::structs::{cash::Cash, queue::Queue};
 
 #[derive(Clone)]
 pub struct WeightedQueue<T> {
@@ -77,13 +77,13 @@ impl<T: Clone> WeightedQueue<T> {
 }
 
 #[derive(Clone)]
-pub struct DistributedWeightedQueue<T> {
+pub struct DistributedWeightedQueue<T: Clone + Cash> {
     pub current_node: Arc<Mutex<usize>>,
     pub size: usize,
     pub queues: Arc<RwLock<Vec<WeightedQueue<T>>>>,
 }
 
-impl<T: Clone> DistributedWeightedQueue<T> {
+impl<T: Clone + Cash> DistributedWeightedQueue<T> {
     pub fn new(size: usize) -> Self {
         DistributedWeightedQueue {
             current_node: Arc::new(Mutex::new(0)),
@@ -93,13 +93,24 @@ impl<T: Clone> DistributedWeightedQueue<T> {
     }
 
     pub fn queue(&self, weight: usize, value: Vec<T>) {
-        let current_node = {
-            let mut current_node = self.current_node.lock().unwrap();
-            let index_to_queue_to = *current_node;
-            *current_node = (*current_node + 1) % self.size;
-            index_to_queue_to
-        };
-        self.queues.read().unwrap()[current_node].queue(value, weight);
+        let mut vectors: Vec<Vec<T>> = Vec::with_capacity(self.size);
+        for _ in 0..self.size {
+            vectors.push(vec![]);
+        }
+        for val in value {
+            let index = (val.cash() % self.size as u64) as usize;
+            vectors[index].push(val);
+        }
+        for i in 0..vectors.len() {
+            self.queues.read().unwrap()[i].queue(vectors[i].clone(), weight);
+        }
+        // let current_node = {
+        //     let mut current_node = self.current_node.lock().unwrap();
+        //     let index_to_queue_to = *current_node;
+        //     *current_node = (*current_node + 1) % self.size;
+        //     index_to_queue_to
+        // };
+        // self.queues.read().unwrap()[current_node].queue(value, weight);
     }
 
     pub fn dequeue_optional(&self, i: usize, max: usize) -> Option<(usize, Vec<T>)> {
