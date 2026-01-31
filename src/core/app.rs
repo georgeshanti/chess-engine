@@ -1,11 +1,11 @@
-use std::{sync::{Arc, Mutex, RwLock, mpsc::Receiver}, thread::JoinHandle, time::Duration};
+use std::{sync::{Arc, Mutex, RwLock, mpsc::Receiver}, thread::{JoinHandle, sleep, spawn}, time::Duration};
 
 use ratatui::{Frame, crossterm::event::{Event, KeyCode, poll, read}, layout::{Alignment, Constraint, Direction, Layout, Margin, Rect}, widgets::{Block, Borders, Paragraph}};
 use regex::Regex;
 use thousands::Separable;
 use tui_input::{Input, backend::crossterm::EventHandler};
 
-use crate::{core::{chess::{board::Board, initial_board::INITIAL_BOARD, piece::{BLACK, EMPTY, PRESENT, get_color, get_presence}}, engine::{evaluation_engine::evaluation_engine, prune_engine::prune_engine, reevaluation_engine::reevaluation_engine, structs::{PositionToEvaluate, PositionsToEvaluate, PositionsToReevaluate}}, structs::{map::Positions, queue::DistributedQueue, weighted_queue::DistributedWeightedQueue}}, log};
+use crate::{core::{chess::{board::{Board, BoardArrangement}, initial_board::INITIAL_BOARD, piece::{BLACK, EMPTY, PRESENT, get_color, get_presence}}, engine::{evaluation_engine::evaluation_engine, prune_engine::prune_engine, reevaluation_engine::reevaluation_engine, structs::{PositionToEvaluate, PositionsToEvaluate, PositionsToReevaluate}}, structs::{map::Positions, queue::DistributedQueue, weighted_queue::DistributedWeightedQueue}}, log};
 
 
 
@@ -239,89 +239,170 @@ impl App {
     }
 
     fn process_prompt(&mut self) {
-            let current_board = self.current_board.lock().unwrap();
-            let re = Regex::new(r"([a-z])(\d)-([a-z])(\d)").unwrap();
-            let mut input = self.input.write().unwrap();
-            let captures = match re.captures(input.value()){
-                Some(captures) => captures,
-                None => {
-                    self.prompt = String::from("Invalid syntax. Enter move:");
-                    input.reset();
-                    return;
-                }
-            };
-            let from_file = ((captures[1].chars().nth(0).unwrap() as u32) - 'a' as u32) as usize;
-            let from_rank = captures[2].parse::<usize>().unwrap()-1;
-            let to_file = ((captures[3].chars().nth(0).unwrap() as u32) - 'a' as u32) as usize;
-            let to_rank = captures[4].parse::<usize>().unwrap()-1;
-            let source_piece = current_board.get(from_rank, from_file);
-            let target_piece = current_board.get(to_rank, to_file);
-
-            log!("Processing prompt: from_file: {}, from_rank: {}, to_file: {}, to_rank: {}", from_file, from_rank, to_file, to_rank);
-
-            if get_presence(source_piece) == EMPTY || get_color(source_piece) == BLACK || !(get_presence(target_piece) == EMPTY || get_color(target_piece) == BLACK) {
-                log!("{}, {}, {}, {}. Syntax error.", get_presence(source_piece) == EMPTY, get_color(source_piece) == BLACK, get_presence(target_piece) == EMPTY, get_color(target_piece) == BLACK);
-                self.prompt = String::from("Invalid move. Enter move:");
-                input.reset();
-                return;
+        {
+            let queue_count = {self.positions_to_evaluate.queues.read().unwrap().len()};
+            let mut handles = vec![];
+            for i in 0..queue_count {
+                let positions = self.positions_to_evaluate.clone();
+                handles.push(std::thread::Builder::new().name(format!("eval_queue_deleter_{}", i)).spawn(move || {
+                    loop {
+                        let (board_depth, positions_to_evaluate_list) = {
+                            let mut c = 0;
+                            loop {
+                                if c > 10 {
+                                    return;
+                                }
+                                match positions.dequeue_optional(i) {
+                                    Some(value) => {
+                                        break value
+                                    }
+                                    None => {
+                                        sleep(Duration::from_millis(100));
+                                        c += 1;
+                                    }
+                                }
+                            }
+                        };
+                        // log!("Removed from queue: {}", i);
+                    }
+                }).unwrap());
             }
-
-            log!("Processing prompt: Valid pieces present in source and target squares");
-            log!("Processing prompt: current_board: {:?} \n{}", current_board.pieces, current_board);
-            let next_board = {
-                let current_board_state = self.positions.get(&*current_board);
-                if let Some(pointer_to_board) = current_board_state {
-                    log!("Processing prompt: Found board state for current position");
-
-                    let board_arrangement_positions = pointer_to_board.ptr.upgrade().unwrap();
-                    let readable_board_arrangement_positions = board_arrangement_positions.read().unwrap();
-                    let board_state = readable_board_arrangement_positions.get(pointer_to_board.index).read().unwrap();
-    
-                    let mut next_board: Option<Board> = None;
-                    for next_move in board_state.next_moves.iter() {
-                        let source_piece = next_move.get(7-from_rank, 7-from_file);
-                        let target_piece = next_move.get(7-to_rank, 7-to_file);
-                        log!("Processing prompt: candidate:\n{}", next_move.inverted());
-                        if get_presence(source_piece) == EMPTY && get_presence(target_piece) == PRESENT && get_color(target_piece) == BLACK {
-                            next_board = Some(*next_move);
-                            break;
-                        }
+            for handle in handles {
+                handle.join();
+            }
+            log!("Eval Queue Deleted");
+        }
+        {
+            let queue_count = {self.positions_to_reevaluate.queues.len()};
+            let mut i = 0;
+            let mut handles = vec![];
+            for i in 0..queue_count {
+                let positions = self.positions_to_reevaluate.clone();
+                handles.push(std::thread::Builder::new().name(format!("reval_queue_deleter_{}", i)).spawn(move || {
+                    loop {
+                        let _ = {
+                            let mut c = 0;
+                            loop {
+                                if c > 10 {
+                                    return;
+                                }
+                                match positions.dequeue_optional(i) {
+                                    Some(value) => {
+                                        break value
+                                    }
+                                    None => {
+                                        sleep(Duration::from_millis(100));
+                                        c += 1;
+                                    }
+                                }
+                            }
+                        };
+                        // log!("Removed from queue: {}", i);
                     }
-                    match next_board {
-                        Some(next_board) => next_board,
-                        None => {
-                            log!("Processing prompt: Could not find move corresponding to prompt");
-                            self.prompt = String::from("Invalid move 2. Enter move:");
-                            input.reset();
-                            return;
-                        }
-                    }
-                } else {
-                    log!("Processing prompt: Could not find board state for current position");
-                    self.prompt = String::from("Invalid move 3. Enter move:");
-                    input.reset();
-                    return;
-                }
+                }).unwrap());
+            }
+            for handle in handles {
+                handle.join();
+            }
+            log!("Eval Queue Deleted");
+        }
+        {
+            let keys = {
+                let k = self.positions.map.read().unwrap();
+                let t: Vec<BoardArrangement> = k.keys().map(|t| t.clone()).collect();
+                t
             };
-            let editing = self.editing.clone();
-            let app = self.clone();
-            std::thread::Builder::new().name(format!("reevaluation_engine_main")).spawn(move || {
-                {
-                    let app = app.clone();
-                    std::thread::spawn(move || {
-                        prune_engine(app.clone(), next_board);
-                    }).join().unwrap();
-                }
+            for key in keys {
+                let mut writable_map = self.positions.map.write().unwrap();
+                writable_map.remove(&key);
+                drop(writable_map);
+                sleep(Duration::from_millis(1));
+            }
+            log!("Board Positions Deleted");
+        }
+            // let current_board = self.current_board.lock().unwrap();
+            // let re = Regex::new(r"([a-z])(\d)-([a-z])(\d)").unwrap();
+            // let mut input = self.input.write().unwrap();
+            // let captures = match re.captures(input.value()){
+            //     Some(captures) => captures,
+            //     None => {
+            //         self.prompt = String::from("Invalid syntax. Enter move:");
+            //         input.reset();
+            //         return;
+            //     }
+            // };
+            // let from_file = ((captures[1].chars().nth(0).unwrap() as u32) - 'a' as u32) as usize;
+            // let from_rank = captures[2].parse::<usize>().unwrap()-1;
+            // let to_file = ((captures[3].chars().nth(0).unwrap() as u32) - 'a' as u32) as usize;
+            // let to_rank = captures[4].parse::<usize>().unwrap()-1;
+            // let source_piece = current_board.get(from_rank, from_file);
+            // let target_piece = current_board.get(to_rank, to_file);
 
-                {
-                    let app = app.clone();
-                    std::thread::spawn(move || {
-                        reevaluation_engine(app.clone());
-                    }).join().unwrap();
-                }
-                let mut editing = editing.write().unwrap();
-                *editing = true;
-            }).unwrap();
+            // log!("Processing prompt: from_file: {}, from_rank: {}, to_file: {}, to_rank: {}", from_file, from_rank, to_file, to_rank);
+
+            // if get_presence(source_piece) == EMPTY || get_color(source_piece) == BLACK || !(get_presence(target_piece) == EMPTY || get_color(target_piece) == BLACK) {
+            //     log!("{}, {}, {}, {}. Syntax error.", get_presence(source_piece) == EMPTY, get_color(source_piece) == BLACK, get_presence(target_piece) == EMPTY, get_color(target_piece) == BLACK);
+            //     self.prompt = String::from("Invalid move. Enter move:");
+            //     input.reset();
+            //     return;
+            // }
+
+            // log!("Processing prompt: Valid pieces present in source and target squares");
+            // log!("Processing prompt: current_board: {:?} \n{}", current_board.pieces, current_board);
+            // let next_board = {
+            //     let current_board_state = self.positions.get(&*current_board);
+            //     if let Some(pointer_to_board) = current_board_state {
+            //         log!("Processing prompt: Found board state for current position");
+
+            //         let board_arrangement_positions = pointer_to_board.ptr.upgrade().unwrap();
+            //         let readable_board_arrangement_positions = board_arrangement_positions.read().unwrap();
+            //         let board_state = readable_board_arrangement_positions.get(pointer_to_board.index).read().unwrap();
+    
+            //         let mut next_board: Option<Board> = None;
+            //         for next_move in board_state.next_moves.iter() {
+            //             let source_piece = next_move.get(7-from_rank, 7-from_file);
+            //             let target_piece = next_move.get(7-to_rank, 7-to_file);
+            //             log!("Processing prompt: candidate:\n{}", next_move.inverted());
+            //             if get_presence(source_piece) == EMPTY && get_presence(target_piece) == PRESENT && get_color(target_piece) == BLACK {
+            //                 next_board = Some(*next_move);
+            //                 break;
+            //             }
+            //         }
+            //         match next_board {
+            //             Some(next_board) => next_board,
+            //             None => {
+            //                 log!("Processing prompt: Could not find move corresponding to prompt");
+            //                 self.prompt = String::from("Invalid move 2. Enter move:");
+            //                 input.reset();
+            //                 return;
+            //             }
+            //         }
+            //     } else {
+            //         log!("Processing prompt: Could not find board state for current position");
+            //         self.prompt = String::from("Invalid move 3. Enter move:");
+            //         input.reset();
+            //         return;
+            //     }
+            // };
+            // let editing = self.editing.clone();
+            // let app = self.clone();
+            // std::thread::Builder::new().name(format!("reevaluation_engine_main")).spawn(move || {
+            //     {
+            //         let app = app.clone();
+            //         std::thread::spawn(move || {
+            //             prune_engine(app.clone(), next_board);
+            //         }).join().unwrap();
+            //     }
+
+            //     {
+            //         let app = app.clone();
+            //         std::thread::spawn(move || {
+            //             reevaluation_engine(app.clone());
+            //         }).join().unwrap();
+            //     }
+            //     let mut editing = editing.write().unwrap();
+            //     *editing = true;
+            // }).unwrap();
             
             // {
             //     let next_board_state = self.positions.get(&next_board);
