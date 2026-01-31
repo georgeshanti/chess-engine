@@ -25,6 +25,7 @@ pub struct App {
     pub prompt: String,
     pub start_time: std::time::Instant,
     pub status: Arc<RwLock<String>>,
+    pub current_depth: Arc<RwLock<usize>>
 }
 
 impl App {
@@ -45,6 +46,7 @@ impl App {
             prompt: String::from("Enter move:"),
             start_time: std::time::Instant::now(),
             status: Arc::new(RwLock::new(String::from("Evaluating..."))),
+            current_depth: Arc::new(RwLock::new(5)),
         };
     
         for _ in 0..thread_count {
@@ -239,7 +241,7 @@ impl App {
     }
 
     fn process_prompt(&mut self) {
-            let current_board = self.current_board.lock().unwrap();
+            let mut current_board = self.current_board.lock().unwrap();
             let re = Regex::new(r"([a-z])(\d)-([a-z])(\d)").unwrap();
             let mut input = self.input.write().unwrap();
             let captures = match re.captures(input.value()){
@@ -305,6 +307,8 @@ impl App {
             };
             let editing = self.editing.clone();
             let app = self.clone();
+            let run_lock_lock = app.run_lock.write().unwrap();
+            let app = self.clone();
             std::thread::Builder::new().name(format!("reevaluation_engine_main")).spawn(move || {
                 {
                     let app = app.clone();
@@ -357,6 +361,15 @@ impl App {
             //         }
             //     }
             // }
+            // let depth = {
+            //     let app = self.clone();
+            //     *(app.current_depth.read().unwrap())
+            // };
+            // {
+            //     let app = self.clone();
+            //     *(app.current_depth.write().unwrap()) = depth + 2;
+            // }
+            drop(run_lock_lock);
     }
 
     fn run_engine(&self, thread_count: usize) {

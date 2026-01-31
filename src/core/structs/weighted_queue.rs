@@ -33,7 +33,7 @@ impl<T: Clone> WeightedQueue<T> {
         queues.queue(value);
     }
 
-    pub fn dequeue_optional(&self) -> Option<(usize, Vec<T>)> {
+    pub fn dequeue_optional(&self, max: usize) -> Option<(usize, Vec<T>)> {
         // Fetch largest weight queue
         let largest_weight_queue = {
             let readable_queues = self.queues.read().unwrap();
@@ -41,6 +41,9 @@ impl<T: Clone> WeightedQueue<T> {
         };
         match largest_weight_queue {
             Some((weight, queue)) => {
+                if weight > max {
+                    return None;
+                }
                 match queue.dequeue_optional() {
                     Some(value) => {
                         Some((weight, value))
@@ -99,8 +102,8 @@ impl<T: Clone> DistributedWeightedQueue<T> {
         self.queues.read().unwrap()[current_node].queue(value, weight);
     }
 
-    pub fn dequeue_optional(&self, i: usize) -> Option<(usize, Vec<T>)> {
-        self.queues.read().unwrap()[i].dequeue_optional()
+    pub fn dequeue_optional(&self, i: usize, max: usize) -> Option<(usize, Vec<T>)> {
+        self.queues.read().unwrap()[i].dequeue_optional(max)
     }
 
     pub fn len(&self) -> usize {

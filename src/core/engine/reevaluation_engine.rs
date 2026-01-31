@@ -1,6 +1,6 @@
 use std::{cmp::Ordering, thread::{sleep}, time::Duration};
 
-use crate::{core::{app::App, chess::board_state::NextBestMove, engine::structs::PositionsToReevaluate, structs::{map::Positions}}};
+use crate::{core::{app::App, chess::board_state::NextBestMove, engine::structs::PositionsToReevaluate, structs::map::Positions}, log};
 
 pub fn reevaluation_engine(app: App) {
     {
@@ -108,11 +108,12 @@ pub fn reevaluation_thread(positions_to_reevaluate: PositionsToReevaluate, posit
                     }
 
                     if should_reevaluate {
-
                         let readable_board_arrangement_positions = board_arrangement_positions.read().unwrap();
                         let board_state = readable_board_arrangement_positions.get(pointer_to_board.index).read().unwrap();
                         let previous_moves = board_state.previous_moves.read().unwrap();
                         positions_to_reevaluate.queue(previous_moves.iter().map(|pos| (depth-1, pos.clone())).collect());
+                    } else {
+                        log!("Not re-evaluating");
                     }
                 }
             }

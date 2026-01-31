@@ -12,13 +12,14 @@ pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App) {
     let positions = app.positions.clone();
     let positions_to_reevaluate = app.positions_to_reevaluate.clone();
     loop {
+        let run_lock_lock = app.run_lock.read().unwrap();
         // sleep(Duration::from_millis(500));
-        if timed {
-            if start_time.elapsed() > Duration::from_secs(10) {
-                log!("Evaluation engine timed out");
-                return;
-            }
-        }
+        // if timed {
+        //     if start_time.elapsed() > Duration::from_secs(10) {
+        //         log!("Evaluation engine timed out");
+        //         return;
+        //     }
+        // }
         {
             *(app.thread_stats[index].running_status.write().unwrap()) = false;
         }
@@ -31,21 +32,28 @@ pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App) {
         }
         // println!("Evaluation engine running");
         // let position = positions_to_evaluate.dequeue(index);
+        let max_depth = {
+            *app.current_depth.read().unwrap()
+        };
         let (board_depth, positions_to_evaluate_list) = {
             let mut c = 0;
-            loop {
+            let res = loop {
                 if c > 10 {
-                    return;
+                    break None;
                 }
-                match positions_to_evaluate.dequeue_optional(index) {
+                match positions_to_evaluate.dequeue_optional(index, max_depth) {
                     Some(value) => {
-                        break value
+                        break Some(value)
                     }
                     None => {
                         sleep(Duration::from_millis(100));
                         c += 1;
                     }
                 }
+            };
+            match res {
+                Some(res) => {res},
+                None => continue,
             }
         };
         // if board_depth > 2 {
@@ -98,5 +106,6 @@ pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App) {
                 },
             }
         }
+        drop(run_lock_lock);
     }
 }

@@ -67,6 +67,6 @@ fn remove_board_arrangements(positions: Positions, receiver: Receiver<BoardArran
             Err(_) => { break; }
         }
         drop(writable_positions);
-        sleep(Duration::from_millis(10));
+        sleep(Duration::from_nanos(1));
     }
 }
