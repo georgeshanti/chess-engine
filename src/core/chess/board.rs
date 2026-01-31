@@ -1,8 +1,12 @@
 use std::fmt::Display;
+use std::hash::DefaultHasher;
+use std::hash::Hash;
+use std::hash::Hasher;
 
 use crate::core::chess::bitwise_operations::and_byte;
 use crate::core::chess::piece::*;
 use crate::core::chess::board_state::*;
+use crate::core::structs::cash::Cash;
 use crate::log;
 use serde::{Serialize, Deserialize};
 use serde_big_array::BigArray;
@@ -11,6 +15,14 @@ use serde_big_array::BigArray;
 pub struct Board {
     #[serde(with = "BigArray")]
     pub pieces: [u8; 64],
+}
+
+impl Cash for Board {
+    fn cash(self: &Self) -> u64 {
+        let mut state = DefaultHasher::new();
+        self.get_board_arrangement().hash(&mut state);
+        state.finish()
+    }
 }
 
 const ROOK_DIRECTIONS: [(i8, i8); 4] = [(1, 0), (-1, 0), (0, 1), (0, -1)];

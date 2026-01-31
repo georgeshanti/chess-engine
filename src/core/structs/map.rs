@@ -1,10 +1,57 @@
-use std::{collections::HashMap, sync::{Arc, RwLock, Weak}};
+use std::{collections::{HashMap, HashSet}, hash::{DefaultHasher, Hash, Hasher, RandomState}, sync::{Arc, RwLock, Weak}};
 
-use crate::{core::chess::{board::{Board, BoardArrangement}, board_state::BoardState}, log};
+use crate::{core::{chess::{board::{Board, BoardArrangement}, board_state::BoardState}, structs::cash::Cash}, log};
 
 pub struct PointerToBoard {
     pub ptr: Weak<RwLock<BoardArrangementPositions>>,
     pub index: usize,
+}
+
+#[derive(Clone)]
+pub struct GroupedPositions {
+    pub length: usize,
+    pub map: [Option<Positions>; 16],
+}
+
+impl GroupedPositions {
+
+    pub fn new(len: usize) -> Self {
+        let mut gp = GroupedPositions {
+            length: len,
+            map: [const { None }; 16],
+        };
+        for i in 0..len {
+            gp.map[i] = Some(Positions::new())
+        }
+        gp
+    }
+
+    pub fn edit(&self, index: usize, board: &Board) -> Presence<PointerToBoard> {
+        self.map[index].clone().unwrap().edit(board)
+    }
+
+    pub fn get(&self, board: &Board) -> Option<PointerToBoard> {
+        let hash = board.cash();
+        let index: usize = (hash % (self.length as u64)) as usize;
+        self.map[index].clone().unwrap().get(board)
+    }
+
+    pub fn len(self: &Self) -> String {
+        let mut keys: HashSet<BoardArrangement> = HashSet::new();
+        let mut len = 0;
+        for i in 0..self.length {
+            let position = self.map[i].clone().unwrap();
+            for (key, value) in position.map.read().unwrap().iter() {
+                let board_arrangement_positions = value.read().unwrap();
+                len = len + board_arrangement_positions.size;
+                let newly_inserted = keys.insert(key.clone());
+                if !newly_inserted {
+                    log!("Deplicate key");
+                }
+            }
+        }
+        format!("{} {}", keys.len(), len)
+    }
 }
 
 #[derive(Clone)]
@@ -108,7 +155,7 @@ impl Positions {
         })
     }
 
-    pub fn edit<'a, 'b>(&'a self, board: &'b Board) -> Presence<PointerToBoard> {
+    pub fn edit(& self, board: & Board) -> Presence<PointerToBoard> {
         // log!("Editing board");
         let board_arrangement_positions = self.get_board_arrangement_positions(board);
         // log!("Got board pieces map");
