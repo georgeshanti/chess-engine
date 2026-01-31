@@ -7,7 +7,7 @@ use regex::Regex;
 use thousands::Separable;
 use tui_input::{backend::crossterm::EventHandler, Input};
 
-use crate::core::{board::{self, *}, board_state::BoardState, engine::{evaluation_engine::*, reevaluation_engine::*, structs::{PositionToEvaluate, PositionsToEvaluate, PositionsToReevaluate}}, initial_board::*, log::{ENABLE_LOG, FILENAME}, map::{PAGE_BOARD_COUNT, Positions}, piece::*, queue::*, reevaluation_queue::ReevaluationQueue, set::Set, weighted_queue::DistributedWeightedQueue};
+use crate::core::{board::{self, *}, board_state::BoardState, engine::{evaluation_engine::*, reevaluation_engine::*, structs::{PositionToEvaluate, PositionsToEvaluate, PositionsToReevaluate}}, initial_board::*, log::{ENABLE_LOG, FILENAME}, map::{PAGE_BOARD_COUNT, Positions}, piece::*, queue::*, reevaluation_queue::ReevaluationQueue, set::Set, weighted_queue::{DistributedWeightedQueue, WeightedQueue}};
 
 fn prune_vectors(positions: Positions, count: usize) -> Vec<Vec<BoardArrangement>> {
     let board_arrangements: Vec<BoardArrangement> = {
@@ -29,11 +29,82 @@ fn prune_vectors(positions: Positions, count: usize) -> Vec<Vec<BoardArrangement
 fn prune_engine(root_board: Board, board_arrangements: Vec<BoardArrangement>, sender: Sender<BoardArrangement>) {
     let current_board_arrangement = root_board.get_board_arrangement();
     for board_arrangement in board_arrangements {
-        if !can_come_after_board_arrangement(&board_arrangement, &current_board_arrangement) {
+        if !can_come_after_board_arrangement(&current_board_arrangement, &board_arrangement) {
+            // log!("Pruning");
             sender.send(board_arrangement);
+        } else {
+            // log!("Keeping");
         }
     }
     log!("Ended pruning");
+}
+
+fn main2() {
+    let current_board_arrangement: BoardArrangement = serde_json::from_str("{\"higher\":{\"pawns\":65280,\"major_pieces\":[8,2,2,2,1,1]},\"lower\":{\"pawns\":65280,\"major_pieces\":[8,2,2,2,1,1]}}").unwrap();
+    let board_arrangement: BoardArrangement = serde_json::from_str("{\"higher\":{\"pawns\":8421120,\"major_pieces\":[8,2,2,2,1,1]},\"lower\":{\"pawns\":195840,\"major_pieces\":[8,2,2,2,1,1]}}").unwrap();
+    println!("{}", current_board_arrangement);
+    println!("{}", board_arrangement);
+    println!("{}", can_come_after_board_arrangement(&current_board_arrangement, &board_arrangement));
+}
+
+fn main1() {
+    {
+        let f = format!("logs/{}.log", chrono::Local::now().format("%Y-%m-%d_%H-%M-%S").to_string());
+        let mut file_name = FILENAME.write().unwrap();
+        *file_name = f;
+    }
+    let queue = WeightedQueue::new();
+    queue.queue(vec![INITIAL_BOARD], 0);
+    let positions = Positions::new();
+    loop {
+        let d = {
+            let mut c = 0;
+            loop {
+                if c > 10 {
+                    break None;
+                }
+                match queue.dequeue_optional() {
+                    Some(value) => {
+                        break Some(value);
+                    }
+                    None => {
+                        sleep(Duration::from_millis(100));
+                        c += 1;
+                    }
+                }
+            }
+        };
+        match d {
+            Some(value) => {
+                println!("Dequeued: {}", value.0);
+                if value.0 <= 2 {
+                    for board in value.1.iter() {
+                        let evaluation = board.get_evaluation();
+                        positions.edit(&board);
+                        queue.queue(evaluation.1.to_vec(), value.0 + 1);
+                    }
+                }
+            }
+            None => {
+                println!("Queue is empty");
+                break;
+            }
+        }
+        println!("Queue length: {}", queue.len());
+    }
+    println!("Positions: {}", positions.len());
+    let current_board = INITIAL_BOARD.clone().get_evaluation().1[11];
+    let keys = { let t = positions.map.read().unwrap(); t.keys().map(|f| f.clone()).collect::<Vec<BoardArrangement>>() };
+    for key in keys {
+        if !can_come_after_board_arrangement(&current_board.get_board_arrangement(), &key) {
+            positions.map.write().unwrap().remove(&key);
+        }
+    }
+    println!("Positions: {}", positions.len());
+    for key in positions.map.read().unwrap().keys() {
+        log!("\n{}", key);
+    }
+
 }
 
 fn main() {
@@ -266,7 +337,7 @@ impl App {
             .constraints(vec![Constraint::Percentage(50); 2])
             .split(positions_evaluated_pseudo_pane).as_ref().try_into().unwrap();
 
-        frame.render_widget(Paragraph::new("Reval Queue:"), reval_queue_stat_pane);
+        frame.render_widget(Paragraph::new("Reval Queue:"), reval_queue_stat_name_pane);
         let mut length = 0;
         for i in 0..self.thread_stats.len() {
             let l = self.positions_to_reevaluate.queues[i].length.read().unwrap();
@@ -395,44 +466,48 @@ impl App {
                         *app.status.write().unwrap() = String::from("Pruning positions...");
                     }
                     let (sender, receiver) = mpsc::channel::<BoardArrangement>();
-                    for i in 0..app.thread_count-1 {
-                        let board_arrangements = vectors.pop().unwrap();
-                        let current_board = app.current_board.lock().unwrap().clone();
-                        let sender = sender.clone();
+                    let i = 0;
+                    let board_arrangements = {
+                        app.positions.map.read().unwrap().keys().map(|f| f.clone()).collect::<Vec<BoardArrangement>>()
+                    };
+                    // for i in 0..vectors.len() {
+                        // let board_arrangements = vectors.pop().unwrap();
+                        // let sender = sender.clone();
                         log!("Spawning prune_engine_{}", board_arrangements.len());
+                        // let s = sender.clone();
                         handles.push(std::thread::Builder::new().name(format!("prune_engine_{}", i)).spawn(move || {
-                            prune_engine(current_board, board_arrangements, sender);
+                            prune_engine(next_board, board_arrangements, sender);
                         }));
-                    }
+                    // }
                     handles.push(std::thread::Builder::new().name(format!("send_board_arrangements")).spawn(move || {
                         remove_board_arrangements(app.positions.clone(), receiver);
                     }));
-                    drop(sender);
+                    // drop(sender);
                     for handle in handles {
                         handle.unwrap().join().unwrap();
                     }
                 }
 
-                // {
-                //     {
-                //         *app.status.write().unwrap() = String::from("Re-evaluating positions...");
-                //     }
-                //     let mut handles = vec![];
-                //     for i in 0..app.thread_count {
-                //         let run_lock = app.run_lock.clone();
-                //         let positions_to_reevaluate = app.positions_to_reevaluate.clone();
-                //         let positions = app.positions.clone();
-                //         handles.push(std::thread::Builder::new().name(format!("reevaluation_engine_{}", i)).spawn(move || {
-                //             reevaluation_engine(run_lock, positions_to_reevaluate, positions, i);
-                //         }));
-                //     }
-                //     for handle in handles {
-                //         handle.unwrap().join().unwrap();
-                //     }
-                //     {
-                //         *app.status.write().unwrap() = String::from("Evaluating...");
-                //     }
-                // }
+                {
+                    {
+                        *app.status.write().unwrap() = String::from("Re-evaluating positions...");
+                    }
+                    let mut handles = vec![];
+                    for i in 0..app.thread_count {
+                        let run_lock = app.run_lock.clone();
+                        let positions_to_reevaluate = app.positions_to_reevaluate.clone();
+                        let positions = app.positions.clone();
+                        handles.push(std::thread::Builder::new().name(format!("reevaluation_engine_{}", i)).spawn(move || {
+                            reevaluation_engine(run_lock, positions_to_reevaluate, positions, i);
+                        }));
+                    }
+                    for handle in handles {
+                        handle.unwrap().join().unwrap();
+                    }
+                    {
+                        *app.status.write().unwrap() = String::from("Evaluating...");
+                    }
+                }
                 let mut editing = editing.write().unwrap();
                 *editing = true;
             }).unwrap();
@@ -516,15 +591,21 @@ fn scratch() {
 }
 
 fn remove_board_arrangements(positions: Positions, receiver: Receiver<BoardArrangement>) {
-    let mut writable_positions = positions.map.write().unwrap();
     loop {
         let b = receiver.recv();
+        let mut writable_positions = positions.map.write().unwrap();
         match b {
             Ok(b) => {
+                log!("Removing board arrangement: {}", b);
                 writable_positions.remove(&b);
             }
-            Err(e) => { break; }
+            Err(e) => {
+                log!("Channel closed");
+                break;
+            }
         }
+        drop(writable_positions);
+        sleep(Duration::from_millis(10));
         // drop(writable_positions);
         // sleep(Duration::from_millis(10));
     }

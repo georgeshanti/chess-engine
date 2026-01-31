@@ -15,6 +15,7 @@ pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App) {
         // sleep(Duration::from_millis(500));
         if timed {
             if start_time.elapsed() > Duration::from_secs(2) {
+                log!("Evaluation engine timed out");
                 return;
             }
         }
@@ -48,6 +49,9 @@ pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App) {
                 }
             }
         };
+        if board_depth > 2 {
+            continue;
+        }
         for position in positions_to_evaluate_list {
             let (previous_board, board, _, _) = position.value;
             headless!("Got board");

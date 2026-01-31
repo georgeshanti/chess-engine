@@ -4,6 +4,7 @@ use crate::core::bitwise_operations::and_byte;
 use crate::core::piece::*;
 use crate::core::board_state::*;
 use crate::log;
+use serde::{Serialize, Deserialize};
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Board {
@@ -415,8 +416,8 @@ fn match_pawns(source: Vec<u8>, destination: Vec<u8>) -> bool {
                 continue;
             }
             let rank_difference = destination_pawn_rank - source_pawn_rank;
-            let file_start = (source_pawn_file - rank_difference).clamp(0, 7);
-            let file_end = (source_pawn_file + rank_difference).clamp(0, 7);
+            let file_start = (source_pawn_file as i16 - rank_difference as i16).clamp(0, 7) as u8;
+            let file_end = (source_pawn_file as i16 + rank_difference as i16).clamp(0, 7) as u8;
             if file_start <= destination_pawn_file && destination_pawn_file <= file_end {
                 let mut new_destination = destination.clone();
                 new_destination.remove(destination_index);
@@ -455,7 +456,7 @@ fn compare_u8_6(a: &[u8; 6], b: &[u8; 6]) -> std::cmp::Ordering {
     return std::cmp::Ordering::Equal;
 }
 
-#[derive(Eq, PartialEq, Hash, Clone)]
+#[derive(Eq, PartialEq, Hash, Clone, Serialize, Deserialize, Debug)]
 pub struct BoardArrangement {
     higher: PieceArrangement,
     lower: PieceArrangement,
@@ -473,30 +474,23 @@ pub fn can_come_after_board_arrangement(source: &BoardArrangement, destination: 
 
 impl Display for BoardArrangement {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.higher.fmt(f).and_then(|_| self.lower.fmt(f))
+        let mut board = Board { pieces: [0; 64] };
+        for i in 0..64 {
+            if 1<<i & self.higher.pawns != 0 {
+                board.set(i / 8, i % 8, PRESENT | WHITE | PAWN | HAS_NOT_MOVED_TWO_SQUARES);
+            }
+            if 1<<i & self.lower.pawns != 0 {
+                board.set((63-i) / 8, (63-i) % 8, PRESENT | BLACK | PAWN | HAS_NOT_MOVED_TWO_SQUARES);
+            }
+        }
+        board.fmt(f)
     }
 }
 
-#[derive(Eq, PartialEq, Hash, Clone)]
+#[derive(Eq, PartialEq, Hash, Clone, Serialize, Deserialize, Debug)]
 pub struct PieceArrangement {
     pawns: u64,
     major_pieces: [u8; 6],
-}
-
-impl Display for PieceArrangement {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut string = String::from("");
-        let mask: u64 = 0b11111111;
-        for i in 0..7 {
-            let row = (self.pawns & (mask << i*8)) >> (i*8);
-            string += &format!("{:08b}\n", row);
-        }
-        string += "{";
-        for i in 1..6 {
-            string += &format!("{}: {}, ", char(((i + 1) << 3) | WHITE | PRESENT), self.major_pieces[i as usize]);
-        }
-        write!(f, "{}}}\n", string)
-    }
 }
 
 impl Display for Board {
