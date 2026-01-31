@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, collections::HashSet, sync::{Arc, RwLock}};
+use std::{cmp::Ordering, collections::HashSet, sync::{RwLock}};
 
 use crate::core::chess::board::*;
 
