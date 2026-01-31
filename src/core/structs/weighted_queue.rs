@@ -1,6 +1,6 @@
 use std::{collections::BTreeMap, sync::{Arc, Mutex, RwLock}};
 
-use crate::core::queue::Queue;
+use crate::core::structs::queue::Queue;
 
 #[derive(Clone)]
 pub struct WeightedQueue<T> {

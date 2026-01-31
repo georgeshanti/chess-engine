@@ -1,6 +1,6 @@
 use std::{sync::mpsc::{self, Receiver, Sender}, thread::sleep, time::Duration};
 
-use crate::{App, core::{chess::board::{Board, BoardArrangement, can_come_after_board_arrangement}, map::Positions}};
+use crate::{App, core::{chess::board::{Board, BoardArrangement, can_come_after_board_arrangement}, structs::map::Positions}};
 
 pub fn prune_engine(app: App, next_board: Board) {
     *app.status.write().unwrap() = String::from("Creating vectors...");
