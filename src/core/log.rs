@@ -2,17 +2,6 @@ use std::sync::RwLock;
 
 pub static FILENAME: RwLock<String> = RwLock::new(String::new());
 pub static ENABLE_LOG: RwLock<bool> = RwLock::new(true);
-pub static headless_flag: RwLock<bool> = RwLock::new(false);
-
-#[macro_export]
-macro_rules! headless {
-    ($($arg:tt)*) => {
-        // You can add custom logic here before calling println!
-        // if core::macros::headless_flag.read().unwrap() {
-        //     println!("{}: {}", std::thread::current().name().unwrap_or("Unknown"), format!($($arg)*));
-        // }
-    };
-}
 
 #[macro_export]
 macro_rules! log {

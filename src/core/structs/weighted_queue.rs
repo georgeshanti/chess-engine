@@ -15,7 +15,7 @@ impl<T: Clone> WeightedQueue<T> {
     }
 
     pub fn queue(&self, value: Vec<T>, weight: usize) {
-        let mut queues = {
+        let queues = {
             let readable_queues = self.queues.read().unwrap();
             match readable_queues.get(&weight) {
                 Some(queue) => {

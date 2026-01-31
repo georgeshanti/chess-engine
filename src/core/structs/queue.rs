@@ -1,4 +1,4 @@
-use std::{collections::HashSet, sync::{Arc, Condvar, Mutex, MutexGuard, RwLock}, time::Duration};
+use std::{collections::HashSet, sync::{Arc, Condvar, Mutex, MutexGuard, RwLock}};
 
 use crate::core::chess::board::Board;
 
@@ -94,10 +94,6 @@ impl<T: Clone> Queue<T> {
         }
     }
 
-    pub fn t_queue(&self, value: Vec<T>) {
-        self.queue(value);
-    }
-
     pub fn queue(&self, value: Vec<T>) {
         if value.is_empty() {
             return;
@@ -181,9 +177,6 @@ impl<T: Clone> Queue<T> {
         // }
         {
             let mut length = self.length.write().unwrap();
-            if *length - return_value.len() < 0 {
-                panic!("Length is negative");
-            }
             *length = *length - return_value.len();
         }
         Some(return_value)
@@ -192,7 +185,7 @@ impl<T: Clone> Queue<T> {
     pub fn dequeue(&self) -> Vec<T> {
         let mut head_pointer = self.head.lock().unwrap();
         // let start = SystemTime::now();
-        let mut head = {
+        let head = {
             let mut scoped_head = head_pointer.lock().unwrap();
             loop {
                 match *scoped_head {
@@ -239,9 +232,6 @@ impl<T: Clone> Queue<T> {
         // }
         {
             let mut length = self.length.write().unwrap();
-            if *length - return_value.len() < 0 {
-                panic!("Length is negative");
-            }
             *length = *length - return_value.len();
         }
         return_value
@@ -249,49 +239,5 @@ impl<T: Clone> Queue<T> {
 
     pub fn is_empty(&self) -> bool {
         self.head.lock().unwrap().lock().unwrap().is_none()
-    }
-}
-
-pub trait QueuePruneTrait<T> {
-    fn prune(&self, value: &HashSet<T>);
-}
-
-impl QueuePruneTrait<Board> for Queue<(Option<Board>, Board, usize)> {
-    fn prune(&self, list: &HashSet<Board>) {
-        let mut _head = self.head.lock().unwrap();
-        let mut pseudo_node = Arc::new(Mutex::new(Some(QueueNode { value: vec![], next: _head.clone() })));
-        let mut moved_to_node = false;
-        loop {
-            let node = {
-                let mut optional_node = pseudo_node.lock().unwrap();
-                if optional_node.is_none() {
-                    break;
-                }
-                // let t = {
-                let mut i = 0;
-                let node = optional_node.as_mut().unwrap();
-                while i < node.value.len() {
-                    if let Some(board) = node.value[i].0 {
-                        if list.contains(&board) {
-                            node.value.remove(i);
-                        } else {
-                            i += 1;
-                        }
-                    }
-                }
-                if !node.value.is_empty() {
-                    moved_to_node = true;
-                    (true, node.next.clone())
-                } else {
-                    (false, node.next.clone())
-                }
-            };
-            if node.0 {
-                let mut t = pseudo_node.lock().unwrap();
-                t.as_mut().unwrap().next = node.1;
-            } else {
-                pseudo_node = node.1;
-            }
-        }
     }
 }

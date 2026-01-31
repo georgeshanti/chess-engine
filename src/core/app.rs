@@ -5,7 +5,7 @@ use regex::Regex;
 use thousands::Separable;
 use tui_input::{Input, backend::crossterm::EventHandler};
 
-use crate::{core::{chess::{board::Board, initial_board::INITIAL_BOARD, piece::{BLACK, EMPTY, PRESENT, get_color, get_presence}}, engine::{evaluation_engine::evaluation_engine, prune_engine::prune_engine, reevaluation_engine::reevaluation_engine, structs::{PositionToEvaluate, PositionsToEvaluate, PositionsToReevaluate}}, structs::map::Positions}, log};
+use crate::{core::{chess::{board::Board, initial_board::INITIAL_BOARD, piece::{BLACK, EMPTY, PRESENT, get_color, get_presence}}, engine::{evaluation_engine::evaluation_engine, prune_engine::prune_engine, reevaluation_engine::reevaluation_engine, structs::{PositionToEvaluate, PositionsToEvaluate, PositionsToReevaluate}}, structs::{map::Positions, queue::DistributedQueue, weighted_queue::DistributedWeightedQueue}}, log};
 
 
 
@@ -28,10 +28,35 @@ pub struct App {
 }
 
 impl App {
-    pub fn run(&mut self, receiver_positions_to_reevaluate: Receiver<Board>) -> Result<(), Box<dyn std::error::Error>> {
+
+    pub fn new(thread_count: usize) -> App {
+        let mut app = App {
+            positions: Positions::new(),
+            positions_to_evaluate: DistributedWeightedQueue::new(thread_count),
+            positions_to_reevaluate: DistributedQueue::new(thread_count),
+            run_lock:  Arc::new(RwLock::new(())),
+            current_board: Arc::new(Mutex::new(INITIAL_BOARD)),
+            thread_stats: Vec::with_capacity(thread_count),
+            thread_count: thread_count,
+            positions_evaluated_acount: Arc::new(RwLock::new(0)),
+            frame_count: 0,
+            input: Arc::new(RwLock::new(Input::new(String::from("")))),
+            editing: Arc::new(RwLock::new(true)),
+            prompt: String::from("Enter move:"),
+            start_time: std::time::Instant::now(),
+            status: Arc::new(RwLock::new(String::from("Evaluating..."))),
+        };
+    
+        for _ in 0..thread_count {
+            app.thread_stats.push(ThreadStat::new());
+        }
+        return app;
+    }
+
+    pub fn run(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         let app = self.clone();
         let _unused = std::thread::Builder::new().name(format!("app_main")).spawn(move || {
-            app.run_engine(app.thread_stats.len(), receiver_positions_to_reevaluate);
+            app.run_engine(app.thread_stats.len());
         }).unwrap();
         {
             let mut t = self.clone();
@@ -214,7 +239,7 @@ impl App {
     }
 
     fn process_prompt(&mut self) {
-            let mut current_board = self.current_board.lock().unwrap();
+            let current_board = self.current_board.lock().unwrap();
             let re = Regex::new(r"([a-z])(\d)-([a-z])(\d)").unwrap();
             let mut input = self.input.write().unwrap();
             let captures = match re.captures(input.value()){
@@ -334,7 +359,7 @@ impl App {
             // }
     }
 
-    fn run_engine(&self, thread_count: usize, receiver_positions_to_reevaluate: Receiver<Board>) {
+    fn run_engine(&self, thread_count: usize) {
         log!("Running engine");
         self.positions_to_evaluate.queue(0, vec![PositionToEvaluate{ value: (None, INITIAL_BOARD, 0, 0) }]);
         log!("queued");

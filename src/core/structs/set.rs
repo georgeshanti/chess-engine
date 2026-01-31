@@ -1,4 +1,4 @@
-use std::{collections::BTreeSet, hash::Hash, sync::{Arc, Condvar, Mutex, RwLock}};
+use std::{collections::BTreeSet, sync::{Arc, Condvar, Mutex, RwLock}};
 
 #[derive(Clone)]
 pub struct Set<T: Ord> {

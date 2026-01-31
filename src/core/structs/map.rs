@@ -1,101 +1,10 @@
-use std::{collections::{HashMap, HashSet}, sync::{Arc, Mutex, RwLock, Weak}};
+use std::{collections::HashMap, sync::{Arc, RwLock, Weak}};
 
-use crate::{core::chess::{bitwise_operations::and_byte, board::{Board, BoardArrangement}, board_state::BoardState, piece::*}, headless, log};
+use crate::{core::chess::{board::{Board, BoardArrangement}, board_state::BoardState}, log};
 
 pub struct PointerToBoard {
     pub ptr: Weak<RwLock<BoardArrangementPositions>>,
     pub index: usize,
-}
-
-#[derive(PartialEq, Eq, Hash, Clone)]
-pub struct BoardPieces {
-    blackPawns: usize,
-    blackRooks: usize,
-    blackKnights: usize,
-    blackBishops: usize,
-    blackQueens: usize,
-    blackKings: usize,
-
-    whitePawns: usize,
-    whiteRooks: usize,
-    whiteKnights: usize,
-    whiteBishops: usize,
-    whiteQueens: usize,
-    whiteKings: usize,
-}
-
-fn get_board_pieces(board: &Board) -> BoardPieces {
-    let mut board_pieces = BoardPieces{
-        blackPawns: 0,
-        blackRooks: 0,
-        blackKnights: 0,
-        blackBishops: 0,
-        blackQueens: 0,
-        blackKings: 0,
-        whitePawns: 0,
-        whiteRooks: 0,
-        whiteKnights: 0,
-        whiteBishops: 0,
-        whiteQueens: 0,
-        whiteKings: 0,
-    };
-
-    let presense_board = and_byte(board.pieces, PRESENCE_BITS);
-    let color_board = and_byte(board.pieces, COLOR_BITS);
-    let type_board = and_byte(board.pieces, TYPE_BITS);
-
-    for i in 0..64 {
-        if presense_board[i] == PRESENT {
-            let is_black = color_board[i] == BLACK;
-            match type_board[i] {
-                PAWN => {
-                    if is_black {
-                        board_pieces.blackPawns += 1;
-                    } else {
-                        board_pieces.whitePawns += 1;
-                    }
-                }
-                ROOK => {
-                    if is_black {
-                        board_pieces.blackRooks += 1;
-                    } else {
-                        board_pieces.whiteRooks += 1;
-                    }
-                }
-                KNIGHT => {
-                    if is_black {
-                        board_pieces.blackKnights += 1;
-                    } else {
-                        board_pieces.whiteKnights += 1;
-                    }
-                }
-                BISHOP => {
-                    if is_black {
-                        board_pieces.blackBishops += 1;
-                    } else {
-                        board_pieces.whiteBishops += 1;
-                    }
-                }
-                QUEEN => {
-                    if is_black {
-                        board_pieces.blackQueens += 1;
-                    } else {
-                        board_pieces.whiteQueens += 1;
-                    }
-                }
-                KING => {
-                    if is_black {
-                        board_pieces.blackKings += 1;
-                    } else {
-                        board_pieces.whiteKings += 1;
-                    }
-                },
-                _ => panic!("Invalid piece type"),
-            }
-        }
-    }
-
-    board_pieces
 }
 
 #[derive(Clone)]

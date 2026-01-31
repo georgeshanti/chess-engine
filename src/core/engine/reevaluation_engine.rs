@@ -1,6 +1,6 @@
-use std::{cmp::Ordering, collections::HashSet, hash::RandomState, sync::{Arc, RwLock, mpsc::{Receiver, Sender}}, thread::{current, sleep}, time::Duration};
+use std::{cmp::Ordering, thread::{sleep}, time::Duration};
 
-use crate::{core::{app::App, chess::{board::Board, board_state::NextBestMove}, engine::structs::PositionsToReevaluate, structs::{map::Positions, queue::*, reevaluation_queue::ReevaluationQueue}}, log};
+use crate::{core::{app::App, chess::board_state::NextBestMove, engine::structs::PositionsToReevaluate, structs::{map::Positions}}};
 
 pub fn reevaluation_engine(app: App) {
     {
@@ -118,12 +118,4 @@ pub fn reevaluation_thread(positions_to_reevaluate: PositionsToReevaluate, posit
             }
         }
     }
-}
-
-fn clone_next_moves(next_moves: &Vec<Board>) -> Vec<Board> {
-    next_moves.clone()
-}
-
-fn clone_previous_moves(previous_moves: &RwLock<HashSet<Board, RandomState>>) -> HashSet<Board> {
-    previous_moves.read().unwrap().clone()
 }

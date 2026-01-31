@@ -1,6 +1,4 @@
-use std::{collections::HashSet, sync::{Arc, Mutex}};
-
-use crate::core::{chess::board::Board, structs::{queue::{DistributedQueue, Queue}, set::Set, weighted_queue::DistributedWeightedQueue}};
+use crate::core::{chess::board::Board, structs::{queue::DistributedQueue, weighted_queue::DistributedWeightedQueue}};
 
 pub type PositionsToEvaluate = DistributedWeightedQueue<PositionToEvaluate>;
 pub type PositionsToReevaluate = DistributedQueue<(usize, Board)>;
@@ -8,12 +6,6 @@ pub type PositionsToReevaluate = DistributedQueue<(usize, Board)>;
 #[derive(Clone, Copy)]
 pub struct PositionToEvaluate {
     pub value: (Option<Board>, Board, usize, i32)
-}
-
-impl PositionToEvaluate {
-    pub fn get_weight(&self) -> i32 {
-        (self.value.2 as i32) - self.value.3
-    }
 }
 
 impl PartialOrd for PositionToEvaluate {
