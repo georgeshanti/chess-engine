@@ -1,34 +1,31 @@
 use std::{cmp::Ordering, collections::HashSet, hash::RandomState, sync::{Arc, RwLock, mpsc::{Receiver, Sender}}, thread::{current, sleep}, time::Duration};
 
-use crate::{core::{board::Board, board_state::NextBestMove, engine::structs::PositionsToReevaluate, map::Positions, queue::*, reevaluation_queue::ReevaluationQueue}, log};
+use crate::{App, core::{board::Board, board_state::NextBestMove, engine::structs::PositionsToReevaluate, map::Positions, queue::*, reevaluation_queue::ReevaluationQueue}, log};
 
+pub fn reevaluation_engine(app: App) {
+    {
+        let app = app.clone();
+        *app.status.write().unwrap() = String::from("Re-evaluating positions...");
+    }
+    let mut handles = vec![];
+    let app= app.clone();
+    for i in 0..app.thread_count {
+        let positions_to_reevaluate = app.positions_to_reevaluate.clone();
+        let positions = app.positions.clone();
+        handles.push(std::thread::Builder::new().name(format!("reevaluation_engine_{}", i)).spawn(move || {
+            reevaluation_thread(positions_to_reevaluate, positions, i);
+        }));
+    }
+    for handle in handles {
+        handle.unwrap().join().unwrap();
+    }
+    {
+        *app.status.write().unwrap() = String::from("Evaluating...");
+    }
+}
 
-
-pub fn reevaluation_engine(run_lock: Arc<RwLock<()>>, positions_to_reevaluate: PositionsToReevaluate, positions: Positions, index: usize) {
-    // println!("Re-Evaluation engine started");
-    let start_time = std::time::Instant::now();
-    // while start_time.elapsed() < RUN_DURATION {
+pub fn reevaluation_thread(positions_to_reevaluate: PositionsToReevaluate, positions: Positions, index: usize) {
     loop {
-        let _unused = run_lock.read().unwrap();
-        // println!("Reeval running");
-        // let value = {
-        //     let mut value = 0;
-        //     loop {
-        //         if value > 5 {
-        //             break None;
-        //         }
-        //         let option = positions_to_reevaluate.pop();
-        //         match option {
-        //             Some(option) => {
-        //                 break Some(option);
-        //             }
-        //             None => {
-        //                 sleep(Duration::from_millis(1));
-        //                 continue;
-        //             }
-        //         }
-        //     }
-        // };
         let value = {
             let mut count = 0;
             loop {
