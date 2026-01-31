@@ -1,4 +1,4 @@
-use crate::core::{board::*, piece::*};
+use crate::core::chess::{board::*, piece::*};
 
 pub const INITIAL_BOARD: Board = Board {
     pieces: [

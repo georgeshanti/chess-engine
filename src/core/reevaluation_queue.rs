@@ -1,6 +1,6 @@
 use std::{collections::{BTreeMap, BTreeSet, HashMap}, sync::{Arc, Mutex, RwLock}};
 
-use crate::core::{board::Board, queue};
+use crate::core::{chess::board::Board, queue};
 
 #[derive(Clone)]
 pub struct ReevaluationQueue {

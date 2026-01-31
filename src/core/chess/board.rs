@@ -1,8 +1,8 @@
 use std::fmt::Display;
 
-use crate::core::bitwise_operations::and_byte;
-use crate::core::piece::*;
-use crate::core::board_state::*;
+use crate::core::chess::bitwise_operations::and_byte;
+use crate::core::chess::piece::*;
+use crate::core::chess::board_state::*;
 use crate::log;
 use serde::{Serialize, Deserialize};
 

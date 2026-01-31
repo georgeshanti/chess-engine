@@ -1,6 +1,6 @@
 use std::{collections::HashSet, sync::{Arc, Mutex}};
 
-use crate::core::{board::Board, queue::{DistributedQueue, Queue}, set::Set, weighted_queue::DistributedWeightedQueue};
+use crate::core::{chess::board::Board, queue::{DistributedQueue, Queue}, set::Set, weighted_queue::DistributedWeightedQueue};
 
 pub type PositionsToEvaluate = DistributedWeightedQueue<PositionToEvaluate>;
 pub type PositionsToReevaluate = DistributedQueue<(usize, Board)>;

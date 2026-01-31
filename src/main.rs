@@ -6,7 +6,7 @@ use regex::Regex;
 use thousands::Separable;
 use tui_input::{backend::crossterm::EventHandler, Input};
 
-use crate::core::{app::{App, ThreadStat}, board::{self, *}, board_state::BoardState, engine::{evaluation_engine::*, prune_engine::prune_engine, reevaluation_engine::*, structs::{PositionToEvaluate, PositionsToEvaluate, PositionsToReevaluate}}, initial_board::*, log::{ENABLE_LOG, FILENAME}, map::{PAGE_BOARD_COUNT, Positions}, piece::*, queue::*, reevaluation_queue::ReevaluationQueue, set::Set, weighted_queue::{DistributedWeightedQueue, WeightedQueue}};
+use crate::core::{app::{App, ThreadStat}, chess::{board::*, initial_board::INITIAL_BOARD}, engine::{evaluation_engine::*, prune_engine::prune_engine, reevaluation_engine::*, structs::{PositionToEvaluate, PositionsToEvaluate, PositionsToReevaluate}}, log::{ENABLE_LOG, FILENAME}, map::{PAGE_BOARD_COUNT, Positions}, queue::*, reevaluation_queue::ReevaluationQueue, set::Set, weighted_queue::{DistributedWeightedQueue, WeightedQueue}};
 
 fn main() {
     unsafe {

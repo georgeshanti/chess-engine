@@ -1,6 +1,6 @@
 use std::{sync::{Arc, RwLock, mpsc::Sender}, thread::sleep, time::Duration};
 
-use crate::{App, core::{board::Board, board_state::BoardState, engine::structs::{PositionToEvaluate, PositionsToReevaluate}, map::{PointerToBoard, Presence}}, headless, log};
+use crate::{App, core::{chess::{board::Board, board_state::BoardState}, engine::structs::{PositionToEvaluate, PositionsToReevaluate}, map::{PointerToBoard, Presence}}, headless, log};
 pub static TIMED: RwLock<bool> = RwLock::new(false);
 
 pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App) {

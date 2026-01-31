@@ -1,6 +1,6 @@
 use std::{collections::{HashMap, HashSet}, sync::{Arc, Mutex, RwLock, Weak}};
 
-use crate::{core::{bitwise_operations::and_byte, board::{Board, BoardArrangement}, board_state::BoardState, piece::*}, headless, log};
+use crate::{core::chess::{bitwise_operations::and_byte, board::{Board, BoardArrangement}, board_state::BoardState, piece::*}, headless, log};
 
 pub struct PointerToBoard {
     pub ptr: Weak<RwLock<BoardArrangementPositions>>,

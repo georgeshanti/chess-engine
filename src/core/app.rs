@@ -5,7 +5,7 @@ use regex::Regex;
 use thousands::Separable;
 use tui_input::{Input, backend::crossterm::EventHandler};
 
-use crate::{core::{board::Board, engine::{evaluation_engine::evaluation_engine, prune_engine::prune_engine, reevaluation_engine::reevaluation_engine, structs::{PositionToEvaluate, PositionsToEvaluate, PositionsToReevaluate}}, initial_board::INITIAL_BOARD, map::Positions, piece::{BLACK, EMPTY, PRESENT, get_color, get_presence}}, log};
+use crate::{core::{chess::{board::Board, initial_board::INITIAL_BOARD, piece::{BLACK, EMPTY, PRESENT, get_color, get_presence}}, engine::{evaluation_engine::evaluation_engine, prune_engine::prune_engine, reevaluation_engine::reevaluation_engine, structs::{PositionToEvaluate, PositionsToEvaluate, PositionsToReevaluate}}, map::Positions}, log};
 
 
 

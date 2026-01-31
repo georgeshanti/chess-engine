@@ -1,6 +1,6 @@
 use std::{collections::HashSet, sync::{Arc, Condvar, Mutex, MutexGuard, RwLock}, time::Duration};
 
-use crate::core::board::Board;
+use crate::core::chess::board::Board;
 
 #[derive(Clone)]
 pub struct DistributedQueue<T> {

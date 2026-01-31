@@ -1,6 +1,6 @@
 use std::{cmp::Ordering, collections::HashSet, sync::{Arc, RwLock}};
 
-use crate::core::board::*;
+use crate::core::chess::board::*;
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum PositionResult {

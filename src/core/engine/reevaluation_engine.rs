@@ -1,6 +1,6 @@
 use std::{cmp::Ordering, collections::HashSet, hash::RandomState, sync::{Arc, RwLock, mpsc::{Receiver, Sender}}, thread::{current, sleep}, time::Duration};
 
-use crate::{core::{app::App, board::Board, board_state::NextBestMove, engine::structs::PositionsToReevaluate, map::Positions, queue::*, reevaluation_queue::ReevaluationQueue}, log};
+use crate::{core::{app::App, chess::{board::Board, board_state::NextBestMove}, engine::structs::PositionsToReevaluate, map::Positions, queue::*, reevaluation_queue::ReevaluationQueue}, log};
 
 pub fn reevaluation_engine(app: App) {
     {
