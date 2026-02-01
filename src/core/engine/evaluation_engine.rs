@@ -36,18 +36,18 @@ pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App) {
             *app.current_depth.read().unwrap()
         };
         let (board_depth, positions_to_evaluate_list) = {
-            let mut c = 0;
+            // let mut c = 0;
             let res = loop {
-                if c > 10 {
-                    break None;
-                }
+                // if c > 10 {
+                //     break None;
+                // }
                 match positions_to_evaluate.dequeue_optional(index, max_depth) {
                     Some(value) => {
                         break Some(value)
                     }
                     None => {
-                        sleep(Duration::from_millis(100));
-                        c += 1;
+                        // sleep(Duration::from_millis(100));
+                        // c += 1;
                     }
                 }
             };

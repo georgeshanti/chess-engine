@@ -1,4 +1,4 @@
-use std::{collections::HashSet, sync::{Arc, Condvar, Mutex, MutexGuard, RwLock}};
+use std::{collections::HashSet, sync::{Arc, Condvar, Mutex, MutexGuard, RwLock}, time::Duration};
 
 use crate::core::{chess::board::Board, structs::cash::Cash};
 
@@ -147,15 +147,24 @@ impl<T: Clone> Queue<T> {
         let mut head_pointer = self.head.lock().unwrap();
         // let start = SystemTime::now();
         let head = {
-            let scoped_head = head_pointer.lock().unwrap();
+            let mut scoped_head = head_pointer.lock().unwrap();
+            loop {
                 match *scoped_head {
                     None => {
-                        return None;
+                        drop(scoped_head);
+                        // println!("Waiting for head");
+                        let res = self.waiter.wait_timeout(head_pointer, Duration::from_nanos(1)).unwrap();
+                        if res.1.timed_out() {
+                            return None;
+                        }
+                        head_pointer = res.0;
+                        scoped_head = head_pointer.lock().unwrap();
                     },
                     Some(_) => {
-                        scoped_head
+                        break scoped_head;
                     }
                 }
+            }
         };
         let mut should_update_tail = false;
         let return_value: Vec<T>;
