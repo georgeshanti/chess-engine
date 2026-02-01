@@ -148,23 +148,16 @@ impl<T: Clone> Queue<T> {
         // let start = SystemTime::now();
         let head = {
             let mut scoped_head = head_pointer.lock().unwrap();
-            loop {
+            // loop {
                 match *scoped_head {
                     None => {
-                        drop(scoped_head);
-                        // println!("Waiting for head");
-                        let res = self.waiter.wait_timeout(head_pointer, Duration::from_nanos(1)).unwrap();
-                        if res.1.timed_out() {
-                            return None;
-                        }
-                        head_pointer = res.0;
-                        scoped_head = head_pointer.lock().unwrap();
+                        return None
                     },
                     Some(_) => {
-                        break scoped_head;
+                        scoped_head
                     }
                 }
-            }
+            // }
         };
         let mut should_update_tail = false;
         let return_value: Vec<T>;
