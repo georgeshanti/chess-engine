@@ -30,6 +30,12 @@ impl GroupedPositions {
         self.map[index].clone().unwrap().edit(board)
     }
 
+    pub fn is_board_arrangement_present(&self, board: &Board) -> bool {
+        let hash = board.cash();
+        let index: usize = (hash % (self.length as u64)) as usize;
+        self.map[index].clone().unwrap().map.read().unwrap().contains_key(&board.get_board_arrangement())
+    }
+
     pub fn get(&self, board: &Board) -> Option<PointerToBoard> {
         let hash = board.cash();
         let index: usize = (hash % (self.length as u64)) as usize;

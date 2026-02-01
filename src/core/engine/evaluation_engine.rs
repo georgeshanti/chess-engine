@@ -66,7 +66,8 @@ pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App) {
                 if skippable_set.contains(&previous_board) {
                     continue;
                 }
-                if let None = positions.get(&previous_board) {
+                // if let None = positions.get(&previous_board) {
+                if !positions.is_board_arrangement_present(&previous_board) {
                     skippable_set.insert(previous_board);
                     continue;
                 }
