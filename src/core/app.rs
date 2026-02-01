@@ -1,4 +1,4 @@
-use std::{sync::{Arc, Mutex, RwLock, mpsc::Receiver}, thread::{JoinHandle, sleep}, time::Duration};
+use std::{sync::{Arc, Mutex, RwLock, mpsc::Receiver}, thread::{JoinHandle, sleep}, time::{Duration, Instant}};
 
 use ratatui::{Frame, crossterm::event::{Event, KeyCode, poll, read}, layout::{Alignment, Constraint, Direction, Layout, Margin, Rect}, widgets::{Block, Borders, Paragraph}};
 use regex::Regex;
@@ -315,6 +315,7 @@ impl App {
             let app = self.clone();
             let run_lock_lock = app.run_lock.write().unwrap();
             let app = self.clone();
+            let start_time = Instant::now();
             let _ = std::thread::Builder::new().name(format!("reevaluation_engine_main")).spawn(move || {
                 {
                     let app = app.clone();
@@ -332,6 +333,7 @@ impl App {
                 let mut editing = editing.write().unwrap();
                 *editing = true;
             }).unwrap().join();
+            log!("Pruned and re-evaluated in {}s", start_time.elapsed().as_secs());
             
             {
                 let mut input = self.input.write().unwrap();
