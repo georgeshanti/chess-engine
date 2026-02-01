@@ -47,7 +47,7 @@ impl App {
             prompt: Arc::new(RwLock::new(String::from("Enter move:"))),
             start_time: std::time::Instant::now(),
             status: Arc::new(RwLock::new(String::from("Evaluating..."))),
-            current_depth: Arc::new(RwLock::new(3)),
+            current_depth: Arc::new(RwLock::new(5)),
         };
     
         for _ in 0..thread_count {
