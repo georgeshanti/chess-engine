@@ -37,20 +37,13 @@ impl GroupedPositions {
     }
 
     pub fn len(self: &Self) -> String {
-        let mut keys: HashSet<BoardArrangement> = HashSet::new();
-        let mut len = 0;
+        let mut lens = vec![];
         for i in 0..self.length {
             let position = self.map[i].clone().unwrap();
-            for (key, value) in position.map.read().unwrap().iter() {
-                let board_arrangement_positions = value.read().unwrap();
-                len = len + board_arrangement_positions.size;
-                let newly_inserted = keys.insert(key.clone());
-                if !newly_inserted {
-                    log!("Deplicate key");
-                }
-            }
+            lens.push(position.len());
         }
-        format!("{} {}", keys.len(), len)
+        let t = lens.join(", ");
+        format!("{{{}}}", t)
     }
 }
 
@@ -200,6 +193,6 @@ impl Positions {
             let board_arrangement_positions = value.read().unwrap();
             len = len + board_arrangement_positions.size;
         }
-        format!("{} {}", self.map.read().unwrap().len(), len)
+        format!("{}: {}", self.map.read().unwrap().len(), len)
     }
 }

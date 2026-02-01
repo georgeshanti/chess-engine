@@ -26,7 +26,7 @@ impl<T: Clone + Cash> DistributedQueue<T> {
     pub fn queue(&self, value: Vec<T>) {
         let mut vectors: Vec<Vec<T>> = Vec::with_capacity(self.size);
         for _ in 0..self.size {
-            vectors.push(vec![]);
+            vectors.push(Vec::with_capacity(self.size));
         }
         for val in value {
             let index = (val.cash() % self.size as u64) as usize;
