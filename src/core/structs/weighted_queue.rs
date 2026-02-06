@@ -97,20 +97,22 @@ impl<T: Clone + Cash> DistributedWeightedQueue<T> {
 
     pub fn queue(&self, weight: usize, value: Vec<T>) {
         let mut size_vectors: Vec<usize> = Vec::with_capacity(self.size);
+        let mut index_vectors: Vec<usize> = Vec::with_capacity(value.len());
         for _ in 0..self.size {
             size_vectors.push(0);
         }
         for val in value.iter() {
             let index = (val.cash() % self.size as u64) as usize;
             size_vectors[index] += 1;
+            index_vectors.push(index);
         }
         let mut vectors: Vec<Vec<T>> = Vec::with_capacity(self.size);
         for i in 0..self.size {
             vectors.push(Vec::with_capacity(size_vectors[i]));
         }
-        for val in value {
-            let index = (val.cash() % self.size as u64) as usize;
-            vectors[index].push(val);
+        for vector_index in 0..value.len() {
+            let index = index_vectors[vector_index];
+            vectors[index].push(value[vector_index].clone());
         }
         for i in 0..self.size {
             let vector = vectors.pop().unwrap();
