@@ -1,4 +1,4 @@
-use std::{array, sync::{Arc, Mutex, RwLock}};
+use std::{array, sync::{Arc, Mutex, RwLock, atomic::{AtomicU64, AtomicUsize}}};
 
 use crate::{core::structs::queue::Queue, log};
 
@@ -6,7 +6,7 @@ use crate::{core::structs::queue::Queue, log};
 pub struct ThreadedQueue<T> {
     pub length: Arc<RwLock<usize>>,
     pub thread_count: usize,
-    pub queue_index: Arc<Mutex<usize>>,
+    pub queue_index: Arc<AtomicU64>,
     pub dequeue_index: Arc<Mutex<usize>>,
     pub queues: Arc<RwLock<Vec<Queue<T>>>>,
 }
@@ -16,7 +16,7 @@ impl<T: Clone> ThreadedQueue<T> {
         let threaded_queue = ThreadedQueue {
             length: Arc::new(RwLock::new(0)),
             thread_count: thread_count,
-            queue_index: Arc::new(Mutex::new(0)),
+            queue_index: Arc::new(AtomicU64::new(0)),
             dequeue_index: Arc::new(Mutex::new(0)),
             queues: Arc::new(RwLock::new(Vec::with_capacity(thread_count))),
         };
@@ -26,13 +26,12 @@ impl<T: Clone> ThreadedQueue<T> {
         return threaded_queue;
     }
 
+    pub fn incrment_queue_index(&self) -> u64 {
+        self.queue_index.fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+    }
+
     pub fn queue(&self, value: Vec<T>) {
-        let queue_index = {
-            let mut queue_index = self.queue_index.lock().unwrap();
-            let index = *queue_index;
-            *queue_index = (*queue_index + 1) % self.thread_count;
-            index
-        };
+        let queue_index = (self.incrment_queue_index() % self.thread_count as u64) as usize;
         let len = value.len();
         // log!("Queueing into index: {:?}, vec size: {:?}", queue_index, value.len());
         *self.length.write().unwrap() += len;

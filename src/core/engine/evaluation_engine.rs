@@ -14,12 +14,12 @@ pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App) {
     loop {
         let run_lock_lock = app.run_lock.read().unwrap();
         // sleep(Duration::from_millis(500));
-        // if timed {
-        //     if start_time.elapsed() > Duration::from_secs(10) {
-        //         log!("Evaluation engine timed out");
-        //         return;
-        //     }
-        // }
+        if timed {
+            if start_time.elapsed() > Duration::from_secs(10) {
+                log!("Evaluation engine timed out");
+                return;
+            }
+        }
         {
             *(app.thread_stats[index].running_status.write().unwrap()) = false;
         }
@@ -46,8 +46,8 @@ pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App) {
                         break Some(value)
                     }
                     None => {
-                        sleep(Duration::from_millis(100));
-                        c += 1;
+                        // sleep(Duration::from_millis(100));
+                        // c += 1;
                     }
                 }
             };
