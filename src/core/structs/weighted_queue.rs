@@ -81,17 +81,15 @@ impl<T: Clone> WeightedQueue<T> {
 
 #[derive(Clone)]
 pub struct DistributedWeightedQueue<T: Clone + Cash> {
-    pub current_node: Arc<Mutex<usize>>,
     pub size: usize,
-    pub queues: Arc<RwLock<Vec<WeightedQueue<T>>>>,
+    pub queues: Vec<WeightedQueue<T>>,
 }
 
 impl<T: Clone + Cash> DistributedWeightedQueue<T> {
     pub fn new(size: usize) -> Self {
         DistributedWeightedQueue {
-            current_node: Arc::new(Mutex::new(0)),
             size,
-            queues: Arc::new(RwLock::new((0..size).map(|_| WeightedQueue::new(size)).collect())),
+            queues: (0..size).map(|_| WeightedQueue::new(size)).collect(),
         }
     }
 
@@ -119,7 +117,7 @@ impl<T: Clone + Cash> DistributedWeightedQueue<T> {
             if vector.is_empty() {
                 continue;
             }
-            self.queues.read().unwrap()[self.size-1-i].queue(vector, weight);
+            self.queues[self.size-1-i].queue(vector, weight);
         }
         // let current_node = {
         //     let mut current_node = self.current_node.lock().unwrap();
@@ -131,16 +129,16 @@ impl<T: Clone + Cash> DistributedWeightedQueue<T> {
     }
 
     pub fn dequeue_optional(&self, i: usize, max: usize) -> Option<(usize, Vec<T>)> {
-        self.queues.read().unwrap()[i].dequeue_optional(max)
+        self.queues[i].dequeue_optional(max)
     }
 
     pub fn len(&self) -> usize {
-        self.queues.read().unwrap().iter().map(|queue| queue.len()).sum()
+        self.queues.iter().map(|queue| queue.len()).sum()
     }
 
     pub fn lengths(&self) -> BTreeMap<usize, usize> {
         let mut lengths: BTreeMap<usize, usize> = BTreeMap::new();
-        for queue in self.queues.read().unwrap().iter() {
+        for queue in self.queues.iter() {
             for (key, value) in queue.lengths().iter() {
                 lengths.insert(*key, lengths.get(key).unwrap_or(&0) + *value);
             }

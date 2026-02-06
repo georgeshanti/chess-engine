@@ -316,12 +316,13 @@ impl Board {
         let mut white_major: [u8; 6] = [0; 6];
         let mut black_pawns: u64 = 0;
         let mut black_major: [u8; 6] = [0; 6];
+        let type_board = Board {pieces: and_byte(self.pieces, TYPE_BITS)};
         for i in 0..64 {
             let piece = self.pieces[i];
             if get_presence(piece) == EMPTY {
                 continue;
             } else {
-                let piece_type = get_type(piece);
+                let piece_type = type_board.pieces[i];
                 if piece_type == PAWN {
                     if get_color(piece) == WHITE {
                         white_pawns = white_pawns | (1 << i);
