@@ -1,15 +1,17 @@
 use std::{collections::BTreeMap, sync::{Arc, Mutex, RwLock}};
 
-use crate::core::structs::{cash::Cash, queue::Queue};
+use crate::{core::structs::{cash::Cash, queue::Queue, threaded_queue::ThreadedQueue}, log};
 
 #[derive(Clone)]
 pub struct WeightedQueue<T> {
-    pub queues: Arc<RwLock<BTreeMap<usize, Queue<T>>>>,
+    pub thread_count: usize,
+    pub queues: Arc<RwLock<BTreeMap<usize, ThreadedQueue<T>>>>,
 }
 
 impl<T: Clone> WeightedQueue<T> {
-    pub fn new() -> Self {
+    pub fn new(thread_count: usize) -> Self {
         WeightedQueue {
+            thread_count,
             queues: Arc::new(RwLock::new(BTreeMap::new())),
         }
     }
@@ -24,7 +26,7 @@ impl<T: Clone> WeightedQueue<T> {
                 None => {
                     drop(readable_queues);
                     let mut writable_queues = self.queues.write().unwrap();
-                    let queue = Queue::new();
+                    let queue = ThreadedQueue::new(self.thread_count);
                     writable_queues.insert(weight, queue.clone());
                     queue
                 }
@@ -34,6 +36,7 @@ impl<T: Clone> WeightedQueue<T> {
     }
 
     pub fn dequeue_optional(&self, max: usize) -> Option<(usize, Vec<T>)> {
+        // log!("Dequeueing from weighted queue with keys: {:?}", self.queues.read().unwrap().keys());
         // Fetch largest weight queue
         let largest_weight_queue = {
             let readable_queues = self.queues.read().unwrap();
@@ -53,7 +56,7 @@ impl<T: Clone> WeightedQueue<T> {
                         let mut writable_queues = self.queues.write().unwrap();
                         let queue = writable_queues.get(&weight);
                         if let Some(queue) = queue {
-                            if queue.is_empty() {
+                            if *queue.length.read().unwrap() == 0 {
                                 writable_queues.remove(&weight);
                             }
                         }
@@ -88,7 +91,7 @@ impl<T: Clone + Cash> DistributedWeightedQueue<T> {
         DistributedWeightedQueue {
             current_node: Arc::new(Mutex::new(0)),
             size,
-            queues: Arc::new(RwLock::new((0..size).map(|_| WeightedQueue::new()).collect())),
+            queues: Arc::new(RwLock::new((0..size).map(|_| WeightedQueue::new(size)).collect())),
         }
     }
 
@@ -102,6 +105,9 @@ impl<T: Clone + Cash> DistributedWeightedQueue<T> {
             vectors[index].push(val);
         }
         for i in 0..vectors.len() {
+            if vectors[i].is_empty() {
+                continue;
+            }
             self.queues.read().unwrap()[i].queue(vectors[i].clone(), weight);
         }
         // let current_node = {

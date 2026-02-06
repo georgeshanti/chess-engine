@@ -40,7 +40,7 @@ fn main() {
 
     log!("Hello, world!");
     let thread_count = std::thread::available_parallelism().unwrap().get();
-    // let thread_count = 2;
+    // let thread_count = 6;
     let mut app = App::new(thread_count);
 
     let _ = app.run();

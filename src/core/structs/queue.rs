@@ -5,7 +5,6 @@ use crate::core::{chess::board::Board, structs::cash::Cash};
 #[derive(Clone)]
 pub struct DistributedQueue<T: Cash + Clone> {
     pub size: usize,
-    pub current_node: Arc<Mutex<usize>>,
     pub queues: Vec<Queue<T>>,
 }
 
@@ -14,7 +13,6 @@ impl<T: Clone + Cash> DistributedQueue<T> {
     pub fn new(size: usize) -> Self {
         let mut queue = DistributedQueue {
             size,
-            current_node: Arc::new(Mutex::new(0)),
             queues: Vec::with_capacity(size),
         };
         for _ in 0..size {
