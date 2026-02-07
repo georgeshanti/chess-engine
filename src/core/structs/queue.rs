@@ -88,7 +88,15 @@ pub struct Queue<T> {
     pub length: Arc<RwLock<usize>>,
 }
 
-fn lock_tail<'a, T>(m: &'a Arc<Mutex<Arc<Mutex<Option<QueueNode<T>>>>>>) -> MutexGuard<'a, Arc<Mutex<Option<QueueNode<T>>>>> {
+fn lock_tail_pointer<'a, T>(m: &'a Arc<Mutex<Arc<Mutex<Option<QueueNode<T>>>>>>) -> MutexGuard<'a, Arc<Mutex<Option<QueueNode<T>>>>> {
+    m.lock().unwrap()
+}
+
+fn lock_tail<'a, T>(m: &'a Arc<Mutex<Option<QueueNode<T>>>>) -> MutexGuard<'a, Option<QueueNode<T>>> {
+    m.lock().unwrap()
+}
+
+fn lock_head<'a, T>(m: &'a Arc<Mutex<Arc<Mutex<Option<QueueNode<T>>>>>>) -> MutexGuard<'a, Arc<Mutex<Option<QueueNode<T>>>>> {
     m.lock().unwrap()
 }
 
@@ -111,9 +119,15 @@ impl<T: Clone> Queue<T> {
         let new_node = Arc::new(Mutex::new(Some(QueueNode { value, next: Arc::new(Mutex::new(None)) })));
 
         let mut should_update_head = false;
-        let mut tail_pointer = lock_tail(&self.tail);
+        let arc_tail = {
+            let mut tail_pointer = lock_tail_pointer(&self.tail);
+            let tail = tail_pointer.clone();
+            *tail_pointer = new_node.clone();
+            tail
+        };
+
         {
-            let mut tail = tail_pointer.lock().unwrap();
+            let mut tail = lock_tail(&arc_tail);
 
             match *tail {
                 Some(ref mut tail) => {
@@ -121,23 +135,25 @@ impl<T: Clone> Queue<T> {
                     tail.next = new_node.clone();
                 }
                 None => {
+                    drop(tail);
                     // println!("Queueing: None");
                     should_update_head = true;
                 }
             }
         }
 
-        *tail_pointer = new_node.clone();
-        drop(tail_pointer);
         {
             let mut length = self.length.write().unwrap();
             *length = *length + len;
         }
+
         if should_update_head {
             // println!("Updating head");
-            let mut head_pointer = self.head.lock().unwrap();
-            *head_pointer = new_node.clone();
-            self.waiter.notify_all();
+            {
+                let mut head_pointer = lock_head(&self.head);
+                *head_pointer = new_node;
+            }
+            // self.waiter.notify_all();
         }
     }
 

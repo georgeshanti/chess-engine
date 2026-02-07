@@ -15,7 +15,7 @@ pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App) {
         let run_lock_lock = app.run_lock.read().unwrap();
         // sleep(Duration::from_millis(500));
         if timed {
-            if start_time.elapsed() > Duration::from_secs(10) {
+            if start_time.elapsed() > Duration::from_secs(4) {
                 log!("Evaluation engine timed out");
                 return;
             }
