@@ -46,7 +46,7 @@ impl App {
             prompt: Arc::new(RwLock::new(String::from("Enter move:"))),
             start_time: std::time::Instant::now(),
             status: Arc::new(RwLock::new(String::from("Evaluating..."))),
-            current_depth: Arc::new(RwLock::new(5)),
+            current_depth: Arc::new(RwLock::new(4)),
         };
     
         for _ in 0..thread_count {
@@ -307,6 +307,7 @@ impl App {
             let editing = self.editing.clone();
             let app = self.clone();
             let run_lock_lock = app.run_lock.write().unwrap();
+            log!("Run lock locked");
             let app = self.clone();
             let start_time = Instant::now();
             let _ = std::thread::Builder::new().name(format!("reevaluation_engine_main")).spawn(move || {
@@ -328,49 +329,49 @@ impl App {
             }).unwrap().join();
             log!("Pruned and re-evaluated in {}s", start_time.elapsed().as_secs());
             
-            // {
-            //     let mut input = self.input.write().unwrap();
-            //     let next_board_state = self.positions.get(&next_board);
-            //     match next_board_state {
-            //         Some(pointer_to_board) => {
+            {
+                let mut input = self.input.write().unwrap();
+                let next_board_state = self.positions.get(&next_board);
+                match next_board_state {
+                    Some(pointer_to_board) => {
 
-            //             let board_arrangement_positions = pointer_to_board.ptr.upgrade().unwrap();
-            //             let readable_board_arrangement_positions = board_arrangement_positions.read().unwrap();
-            //             let next_board_state = readable_board_arrangement_positions.get(pointer_to_board.index).read().unwrap();
-            //             let next_best_move = next_board_state.next_best_move.read().unwrap();
-            //             match *next_best_move {
-            //                 None => {
-            //                     log!("Processing prompt: No next best move found for entered move's position");
-            //                     *self.prompt.write().unwrap() = String::from("Cannot find next best move. Enter move:");
-            //                     input.reset();
-            //                     return;
-            //                 }
-            //                 Some(next_best_move) => {
-            //                     log!("Processing prompt: Setting current board to {}", next_best_move.board);
-            //                     log!("Setting current board to {}", next_best_move.board);
-            //                     *self.current_board.write().unwrap() = next_best_move.board;
-            //                     input.reset();
-            //                 }
-            //             }
-            //         },
-            //         None => {
-            //             // println!("Positions: {}", positions.len());
-            //             // println!("Depth: {}", DEPTH.lock().unwrap());
-            //             log!("Processing prompt: Could not find board state for entered move's position");
-            //             *self.prompt.write().unwrap() = String::from("Have not evaluated position yet. Enter move:");
-            //             input.reset();
-            //             return;
-            //         }
-            //     }
-            // }
-            // let depth = {
-            //     let app = self.clone();
-            //     *(app.current_depth.read().unwrap())
-            // };
-            // {
-            //     let app = self.clone();
-            //     *(app.current_depth.write().unwrap()) = depth + 2;
-            // }
+                        let board_arrangement_positions = pointer_to_board.ptr.upgrade().unwrap();
+                        let readable_board_arrangement_positions = board_arrangement_positions.read().unwrap();
+                        let next_board_state = readable_board_arrangement_positions.get(pointer_to_board.index).read().unwrap();
+                        let next_best_move = next_board_state.next_best_move.read().unwrap();
+                        match *next_best_move {
+                            None => {
+                                log!("Processing prompt: No next best move found for entered move's position");
+                                *self.prompt.write().unwrap() = String::from("Cannot find next best move. Enter move:");
+                                input.reset();
+                                return;
+                            }
+                            Some(next_best_move) => {
+                                log!("Processing prompt: Setting current board to {}", next_best_move.board);
+                                log!("Setting current board to {}", next_best_move.board);
+                                *self.current_board.write().unwrap() = next_best_move.board;
+                                input.reset();
+                            }
+                        }
+                    },
+                    None => {
+                        // println!("Positions: {}", positions.len());
+                        // println!("Depth: {}", DEPTH.lock().unwrap());
+                        log!("Processing prompt: Could not find board state for entered move's position");
+                        *self.prompt.write().unwrap() = String::from("Have not evaluated position yet. Enter move:");
+                        input.reset();
+                        return;
+                    }
+                }
+            }
+            let depth = {
+                let app = self.clone();
+                *(app.current_depth.read().unwrap())
+            };
+            {
+                let app = self.clone();
+                *(app.current_depth.write().unwrap()) = depth + 2;
+            }
             drop(run_lock_lock);
     }
 

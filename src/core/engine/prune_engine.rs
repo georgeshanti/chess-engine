@@ -3,7 +3,7 @@ use std::{sync::mpsc::{self, Receiver, Sender}, thread::sleep, time::Duration};
 use crate::{App, core::{chess::board::{Board, BoardArrangement, can_come_after_board_arrangement}, engine::reevaluation_engine::move_board_arrangement, structs::map::Positions}, log};
 
 pub fn prune_engine(app: App, next_board: Board) {
-
+    log!("Pruning engine started");
     *app.status.write().unwrap() = String::from("Pruning positions...");
 
     let mut handles = vec![];

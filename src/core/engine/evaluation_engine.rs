@@ -25,7 +25,6 @@ pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App) {
         }
 
         // std::thread::sleep(Duration::from_millis(10000));
-        let _unused = run_lock.read().unwrap();
 
         {
             *(app.thread_stats[index].running_status.write().unwrap()) = true;
@@ -47,7 +46,7 @@ pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App) {
                     }
                     None => {
                         // sleep(Duration::from_millis(100));
-                        // c += 1;
+                        c += 1;
                     }
                 }
             };
