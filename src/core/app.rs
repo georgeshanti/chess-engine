@@ -1,4 +1,4 @@
-use std::{sync::{Arc, Mutex, RwLock, mpsc::Receiver}, thread::{JoinHandle, sleep}, time::{Duration, Instant}};
+use std::{sync::{Arc, Mutex, RwLock, mpsc::{self, Receiver, Sender}}, thread::{JoinHandle, sleep}, time::{Duration, Instant}};
 
 use ratatui::{Frame, crossterm::event::{Event, KeyCode, poll, read}, layout::{Alignment, Constraint, Direction, Layout, Margin, Rect}, widgets::{Block, Borders, Paragraph}};
 use regex::Regex;
@@ -25,7 +25,7 @@ pub struct App {
     pub prompt: Arc<RwLock<String>>,
     pub start_time: std::time::Instant,
     pub status: Arc<RwLock<String>>,
-    pub current_depth: Arc<RwLock<usize>>
+    pub current_depth: Arc<RwLock<usize>>,
 }
 
 impl App {
@@ -70,6 +70,14 @@ impl App {
                 }
             }).unwrap();
         }
+        let (prune_sender, prune_receiver) = mpsc::channel::<Board>();
+        let (loop_sender, loop_receiver) = mpsc::channel::<()>();
+        {
+            let app = self.clone();
+            std::thread::spawn(move || {
+                prune_engine(app.clone(), prune_receiver, loop_sender);
+            });
+        }
         loop {
             
             if poll(Duration::from_millis(100))? {
@@ -89,7 +97,7 @@ impl App {
                                 *editing = false;
                                 log!("Processing prompt");
                                 drop(editing);
-                                self.process_prompt();
+                                self.process_prompt(&prune_sender, &loop_receiver);
                             } else {
                                 log!("Forward to input");
                                 self.input.write().unwrap().handle_event(&event);
@@ -234,7 +242,7 @@ impl App {
         frame.render_widget(Paragraph::new(format!("{}", thread_stat.positions_evaluated_length.read().unwrap().separate_with_commas())).alignment(Alignment::Right), right_bars[1]);
     }
 
-    fn process_prompt(&mut self) {
+    fn process_prompt(&mut self, sender: &Sender<Board>, receiver: &Receiver<()>) {
             let mut current_board = {
                 *self.current_board.read().unwrap()
             };
@@ -310,14 +318,11 @@ impl App {
             log!("Run lock locked");
             let app = self.clone();
             let start_time = Instant::now();
+            {
+                sender.send(next_board).unwrap();
+                receiver.recv().unwrap();
+            }
             let _ = std::thread::Builder::new().name(format!("reevaluation_engine_main")).spawn(move || {
-                {
-                    let app = app.clone();
-                    std::thread::spawn(move || {
-                        prune_engine(app.clone(), next_board);
-                    }).join().unwrap();
-                }
-
                 {
                     let app = app.clone();
                     std::thread::spawn(move || {
