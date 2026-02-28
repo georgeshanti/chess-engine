@@ -1,8 +1,13 @@
 mod core;
 
+use mac_notification_sys::*;
+
 use crate::core::{app::App, chess::board::{Board, BoardArrangement}, engine::reevaluation_engine::{move_board, move_board_arrangement}, log::FILENAME};
 
 fn main() {
+
+    let bundle = get_bundle_identifier_or_default("firefox");
+    set_application(&bundle).unwrap();
     unsafe {
         let f = format!("logs/{}.log", chrono::Local::now().format("%Y-%m-%d_%H-%M-%S").to_string());
         let mut file_name = FILENAME.write().unwrap();

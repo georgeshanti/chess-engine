@@ -3,8 +3,6 @@ use std::{sync::mpsc::{self, Receiver, Sender}, thread::sleep, time::Duration};
 use crate::{App, core::{chess::board::{Board, BoardArrangement, can_come_after_board_arrangement}, engine::reevaluation_engine::move_board_arrangement, structs::map::Positions}, log};
 
 pub fn prune_engine(app: App, receiver: Receiver<Board>, sender: Sender<()>) {
-    log!("Pruning engine started");
-    *app.status.write().unwrap() = String::from("Pruning positions...");
 
     let mut handles = vec![];
     let mut wakers: Vec<(Sender<Board>, Receiver<()>)> = vec![];
@@ -20,6 +18,11 @@ pub fn prune_engine(app: App, receiver: Receiver<Board>, sender: Sender<()>) {
 
     loop {
         let next_board = receiver.recv().unwrap();
+        log!("Pruning engine started");
+        {
+            let app = app.clone();
+            *app.status.write().unwrap() = String::from("Pruning positions...");
+        }
         for (thread_tx, _) in wakers.iter() {
             thread_tx.send(next_board.clone()).unwrap();
         }
@@ -36,11 +39,13 @@ fn prune_thread(positions: Positions, receiver: Receiver<Board>, sender: Sender<
         let keys: Vec<BoardArrangement> = {
             positions.map.read().unwrap().keys().map(|f| { f.clone() }).collect()
         };
-        let mut writable_map = positions.map.write().unwrap();
         for key in keys {
+            let mut writable_map = positions.map.write().unwrap();
             if !can_come_after_board_arrangement(&root_board.get_board_arrangement(), &key) {
                 writable_map.remove(&key);
             }
+            drop(writable_map);
+            // sleep(Duration::from_millis(10));
         }
         sender.send(()).unwrap();
     }

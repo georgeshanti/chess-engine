@@ -1,5 +1,6 @@
 use std::{sync::{Arc, Mutex, RwLock, mpsc::{self, Receiver, Sender}}, thread::{JoinHandle, sleep}, time::{Duration, Instant}};
 
+use mac_notification_sys::{Notification, Sound, send_notification};
 use ratatui::{Frame, crossterm::event::{Event, KeyCode, poll, read}, layout::{Alignment, Constraint, Direction, Layout, Margin, Rect}, widgets::{Block, Borders, Paragraph}};
 use regex::Regex;
 use thousands::Separable;
@@ -71,13 +72,23 @@ impl App {
             }).unwrap();
         }
         let (prune_sender, prune_receiver) = mpsc::channel::<Board>();
-        let (loop_sender, loop_receiver) = mpsc::channel::<()>();
+        let (loop_prune_sender, loop_prune_receiver) = mpsc::channel::<()>();
         {
             let app = self.clone();
             std::thread::spawn(move || {
-                prune_engine(app.clone(), prune_receiver, loop_sender);
+                prune_engine(app.clone(), prune_receiver, loop_prune_sender);
             });
         }
+
+        let (reval_sender, reval_receiver) = mpsc::channel::<()>();
+        let (loop_reval_sender, loop_reval_receiver) = mpsc::channel::<()>();
+        {
+            let app = self.clone();
+            std::thread::spawn(move || {
+                reevaluation_engine(app.clone(), reval_receiver, loop_reval_sender);
+            });
+        }
+        log!("Starting loop");
         loop {
             
             if poll(Duration::from_millis(100))? {
@@ -97,7 +108,9 @@ impl App {
                                 *editing = false;
                                 log!("Processing prompt");
                                 drop(editing);
-                                self.process_prompt(&prune_sender, &loop_receiver);
+                                self.process_prompt(&prune_sender, &loop_prune_receiver, &reval_sender, &loop_reval_receiver);
+                                let mut editing = self.editing.write().unwrap();
+                                *editing = true;
                             } else {
                                 log!("Forward to input");
                                 self.input.write().unwrap().handle_event(&event);
@@ -242,7 +255,7 @@ impl App {
         frame.render_widget(Paragraph::new(format!("{}", thread_stat.positions_evaluated_length.read().unwrap().separate_with_commas())).alignment(Alignment::Right), right_bars[1]);
     }
 
-    fn process_prompt(&mut self, sender: &Sender<Board>, receiver: &Receiver<()>) {
+    fn process_prompt(&mut self, prune_sender: &Sender<Board>, loop_prune_receiver: &Receiver<()>, reval_sender: &Sender<()>, loop_reval_receiver: &Receiver<()>) {
             let mut current_board = {
                 *self.current_board.read().unwrap()
             };
@@ -319,21 +332,20 @@ impl App {
             let app = self.clone();
             let start_time = Instant::now();
             {
-                sender.send(next_board).unwrap();
-                receiver.recv().unwrap();
-            }
-            let _ = std::thread::Builder::new().name(format!("reevaluation_engine_main")).spawn(move || {
-                {
-                    let app = app.clone();
-                    std::thread::spawn(move || {
-                        reevaluation_engine(app.clone());
-                    }).join().unwrap();
+                if(current_board.get_board_arrangement() != next_board.get_board_arrangement()) {
+                    prune_sender.send(next_board).unwrap();
+                    loop_prune_receiver.recv().unwrap();
                 }
-                let mut editing = editing.write().unwrap();
-                *editing = true;
-            }).unwrap().join();
+            }
+            {
+                reval_sender.send(()).unwrap();
+                loop_reval_receiver.recv().unwrap();
+            }
             log!("Pruned and re-evaluated in {}s", start_time.elapsed().as_secs());
-            
+            {
+                let app = app.clone();
+                *app.status.write().unwrap() = String::from("Evaluating...");
+            }
             {
                 let mut input = self.input.write().unwrap();
                 let next_board_state = self.positions.get(&next_board);
@@ -377,6 +389,13 @@ impl App {
                 let app = self.clone();
                 *(app.current_depth.write().unwrap()) = depth + 2;
             }
+            send_notification(
+                "NOW",
+                None,
+                "Without subtitle",
+                Some(Notification::new().sound(Sound::Default)),
+            )
+            .unwrap();
             drop(run_lock_lock);
     }
 
