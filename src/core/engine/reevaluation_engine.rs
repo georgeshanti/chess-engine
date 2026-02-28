@@ -65,6 +65,10 @@ pub fn reevaluation_thread(positions_to_reevaluate: PositionsToReevaluate, posit
             };
 
             for (board_to_reevaluate, (next_board, (next_board_new_evaluation, next_board_new_evaluation_timestamp))) in value {
+                if board_to_reevaluate == *move_board.read().unwrap() {
+                    log!("Checking move: {}", next_board);
+                    log!("Move eval: {}", next_board_new_evaluation);
+                }
                 if let Some(pointer_to_board) = positions.get(&board_to_reevaluate) {
                     let board_arrangement_positions = pointer_to_board.ptr.upgrade();
                     if let Some(board_arrangement_positions) = board_arrangement_positions {
@@ -86,16 +90,15 @@ pub fn reevaluation_thread(positions_to_reevaluate: PositionsToReevaluate, posit
 
                         let mut best_move: Option<NextBestMove> = None;
                         for next_move in next_moves.iter() {
-                            match best_move {
-                                None => {
-                                    if let Some((next_position_evaluation, _)) = next_move.1 {
-                                        best_move = Some(NextBestMove{board: next_move.0, evaluation: next_position_evaluation.invert()});
-                                    }
-                                },
-                                Some(present_best_move) => {
-                                    if let Some((next_position_evaluation, _)) = next_move.1 {
-                                        if next_position_evaluation.compare_to(&present_best_move.evaluation) == Ordering::Less {
-                                            best_move = Some(NextBestMove{board: next_move.0, evaluation: next_position_evaluation.invert()});
+                            if let Some((next_position_evaluation, _)) = next_move.1 {
+                                let next_position_evaluation_inverted = next_position_evaluation.invert();
+                                match best_move {
+                                    None => {
+                                        best_move = Some(NextBestMove{board: next_move.0, evaluation: next_position_evaluation_inverted});
+                                    },
+                                    Some(present_best_move) => {
+                                        if next_position_evaluation_inverted.compare_to(&present_best_move.evaluation) == Ordering::Greater {
+                                            best_move = Some(NextBestMove{board: next_move.0, evaluation: next_position_evaluation_inverted});
                                         }
                                     }
                                 }

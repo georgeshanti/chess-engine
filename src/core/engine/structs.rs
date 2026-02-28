@@ -9,7 +9,7 @@ pub type PositionsToReevaluate = DistributedQueue<PositionToReevaluate>;
 
 #[derive(Clone, Copy)]
 pub struct PositionToEvaluate {
-    pub value: (Option<Board>, Board, usize, i32)
+    pub value: (Option<Board>, Board)
 }
 
 impl Cash for PositionToEvaluate {
@@ -27,33 +27,5 @@ impl Cash for (usize, Board) {
 impl Cash for PositionToReevaluate {
     fn cash(self: &Self) -> u64 {
         self.0.cash()
-    }
-}
-
-impl PartialOrd for PositionToEvaluate {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        match self.value.2.cmp(&other.value.2) {
-            std::cmp::Ordering::Equal => {
-                match self.value.1.cmp(&other.value.1) {
-                    std::cmp::Ordering::Equal => self.value.0.partial_cmp(&other.value.0),
-                    other => Some(other),
-                }
-            }
-            other => Some(other),
-        }
-    }
-}
-
-impl PartialEq for PositionToEvaluate {
-    fn eq(&self, other: &Self) -> bool {
-        self.value.0 == other.value.0 && self.value.1 == other.value.1 && self.value.2 == other.value.2
-    }
-}
-
-impl Eq for PositionToEvaluate {}
-
-impl Ord for PositionToEvaluate {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.partial_cmp(other).unwrap()
     }
 }

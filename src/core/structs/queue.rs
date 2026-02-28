@@ -160,7 +160,7 @@ impl<T: Clone> Queue<T> {
     pub fn dequeue_optional(&self) -> Option<Vec<T>> {
         let mut head_pointer = self.head.lock().unwrap();
         // let start = SystemTime::now();
-        let head = {
+        let mut head = {
             let scoped_head = head_pointer.lock().unwrap();
                 match *scoped_head {
                     None => {
@@ -174,14 +174,15 @@ impl<T: Clone> Queue<T> {
         let mut should_update_tail = false;
         let return_value: Vec<T>;
         let new_head = {
-            if let Some(ref head_node) = *head {
+            if let Some(ref mut head_node) = *head {
                 let next = head_node.next.clone();
                 let next_guard = next.lock().unwrap();
                 if next_guard.is_none() {
                     should_update_tail = true;
                 }
                 drop(next_guard);
-                let value = head_node.value.clone();
+                let mut value = vec![];
+                std::mem::swap(&mut value, &mut head_node.value);
                 return_value = value;
                 next
             } else {

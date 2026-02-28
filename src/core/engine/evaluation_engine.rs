@@ -62,7 +62,7 @@ pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App) {
         // }
         let mut skippable_set: HashSet<Board> = HashSet::new();
         for position in positions_to_evaluate_list {
-            let (previous_board, board, _, _) = position.value;
+            let (previous_board, board) = position.value;
             if let Some(previous_board) = previous_board {
                 if skippable_set.contains(&previous_board) {
                     continue;
@@ -104,7 +104,7 @@ pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App) {
     
                     let mut next_boards: Vec<PositionToEvaluate> = Vec::with_capacity(evaluated_board_state.1.len());
                     for next_board in evaluated_board_state.1 {
-                        next_boards.push(PositionToEvaluate{ value: (Some(board), next_board, board_depth + 1, evaluated_board_state.0.get_score()) });
+                        next_boards.push(PositionToEvaluate{ value: (Some(board), next_board) });
                     }
                     positions_to_evaluate.queue(board_depth+1, next_boards);
                 },
@@ -114,6 +114,17 @@ pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App) {
                         let readable_board_arrangement_positions = board_arrangement_positions.read().unwrap();
                         let readable_board_state = readable_board_arrangement_positions.get(value.index).read().unwrap();
                         readable_board_state.previous_moves.write().unwrap().insert(previous_board);
+                        {
+                            let eval = match *readable_board_state.next_best_move.read().unwrap() {
+                                None => {
+                                    readable_board_state.self_evaluation
+                                },
+                                Some(next_best_move) => {
+                                    next_best_move.evaluation
+                                }
+                            };
+                            positions_to_reevaluate.queue(vec!((previous_board, (board, (eval, Instant::now())))));
+                        }
                     }
                 },
             }

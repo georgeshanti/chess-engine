@@ -331,6 +331,8 @@ impl App {
             log!("Run lock locked");
             let app = self.clone();
             let start_time = Instant::now();
+            log!("Player played move: {}", next_board);
+            log!("Plauyer played move json: {}", serde_json::to_string(&next_board).unwrap());
             {
                 if(current_board.get_board_arrangement() != next_board.get_board_arrangement()) {
                     prune_sender.send(next_board).unwrap();
@@ -401,7 +403,7 @@ impl App {
 
     fn run_engine(&self, thread_count: usize) {
         log!("Running engine");
-        self.positions_to_evaluate.queue(0, vec![PositionToEvaluate{ value: (None, INITIAL_BOARD, 0, 0) }]);
+        self.positions_to_evaluate.queue(0, vec![PositionToEvaluate{ value: (None, INITIAL_BOARD) }]);
         log!("queued");
         let mut threads: Vec<JoinHandle<()>> = Vec::new();
         log!("Starting {} threads", thread_count);
@@ -427,7 +429,7 @@ impl App {
         //     println!("{}", m.inverted());
         // }
         // return;
-        loop {}
+        // loop {}
     }
 }
 

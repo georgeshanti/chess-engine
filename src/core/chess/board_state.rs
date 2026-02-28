@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, collections::HashSet, sync::{RwLock}};
+use std::{cmp::Ordering, collections::HashSet, fmt::Display, sync::RwLock};
 
 use crate::core::{chess::board::*, engine::structs::TimestampedEvaluation};
 
@@ -10,10 +10,28 @@ pub enum PositionResult {
     Loss,
 }
 
+impl Display for PositionResult {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            PositionResult::Win => "Win",
+            PositionResult::Scored => "Scored",
+            PositionResult::Draw => "Draw",
+            PositionResult::Loss => "Loss",
+        };
+        write!(f, "PositionResult(result: {})", s)
+    }
+}
+
 #[derive(Copy, Clone, PartialEq)]
 pub struct Evaluation {
     pub result: PositionResult,
     pub score: i32,
+}
+
+impl Display for Evaluation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Evaluation(result: {}, score: {})", self.result, self.score)
+    }
 }
 
 impl Evaluation {
