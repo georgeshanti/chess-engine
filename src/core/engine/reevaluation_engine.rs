@@ -1,6 +1,6 @@
-use std::{cmp::Ordering, sync::{RwLock, mpsc::{self, Receiver, Sender}}, thread::sleep, time::Duration};
+use std::{cmp::Ordering, sync::{RwLock, mpsc::{self, Receiver, Sender}}, thread::sleep, time::{Duration, Instant}};
 
-use crate::{core::{app::App, chess::{board::{Board, BoardArrangement}, board_state::NextBestMove}, engine::structs::PositionsToReevaluate, structs::map::{GroupedPositions, Positions}}, log};
+use crate::{core::{app::App, chess::{board::{Board, BoardArrangement}, board_state::NextBestMove}, engine::structs::{PositionToReevaluate, PositionsToReevaluate}, structs::map::{GroupedPositions, Positions}}, log};
 use std::sync::LazyLock;
 
 pub static move_board: LazyLock<RwLock<Board>> = LazyLock::new(|| RwLock::new(Board::new()));
@@ -64,74 +64,53 @@ pub fn reevaluation_thread(positions_to_reevaluate: PositionsToReevaluate, posit
                 None => break,
             };
 
-            for (depth, board_to_reevaluate) in value {
+            for (board_to_reevaluate, (next_board, (next_board_new_evaluation, next_board_new_evaluation_timestamp))) in value {
                 if let Some(pointer_to_board) = positions.get(&board_to_reevaluate) {
                     let board_arrangement_positions = pointer_to_board.ptr.upgrade();
                     if let Some(board_arrangement_positions) = board_arrangement_positions {
                         let readable_board_arrangement_positions = board_arrangement_positions.read().unwrap();
-                        let board_state = readable_board_arrangement_positions.get(pointer_to_board.index).read().unwrap();
-                        let next_moves = &board_state.next_moves;
-
-                        let mut new_next_best_move: Option<NextBestMove> = None;
-
-                        for next_position in next_moves.iter() {
-                            if let Some(next_position_pointer) = positions.get(&next_position) {
-                                if let Some(board_arrangement_positions) =  next_position_pointer.ptr.upgrade() {
-                                    let next_position_best_evaluation = {
-                                        let readable_board_arrangement_positions = board_arrangement_positions.read().unwrap();
-                                        let next_position_board_state = readable_board_arrangement_positions.get(next_position_pointer.index).read().unwrap();
-                                        let next_position_best_evaluation =  next_position_board_state.next_best_move.read().unwrap();
-                                        match *next_position_best_evaluation {
-                                            Some(next_position_best_evaluation) => next_position_best_evaluation.evaluation.invert(),
-                                            None => next_position_board_state.self_evaluation,
-                                        }
-                                    };
-                                    match new_next_best_move {
-                                        None => {
-                                            new_next_best_move = Some(NextBestMove{
-                                                board: *next_position,
-                                                evaluation: next_position_best_evaluation,
-                                            });
-                                        }
-                                        Some(current_next_best_move) => {
-                                            if current_next_best_move.evaluation.compare_to(&next_position_best_evaluation) == Ordering::Less {
-                                                new_next_best_move = Some(NextBestMove{
-                                                    board: *next_position,
-                                                    evaluation: next_position_best_evaluation,
-                                                });
-                                            }
-                                        }
-                                    };
-                                };
-                            }
-                        }
+                        let mut board_state = readable_board_arrangement_positions.get(pointer_to_board.index).write().unwrap();
+                        let next_moves = &mut board_state.next_moves;
 
                         let mut should_reevaluate = false;
-
-                        if let Some(new_next_best_move) = new_next_best_move {
-                            let readable_board_arrangement_positions = board_arrangement_positions.read().unwrap();
-                            let board_state = readable_board_arrangement_positions.get(pointer_to_board.index).read().unwrap();
-                            let mut current_next_best_move = board_state.next_best_move.write().unwrap();
-                            match *current_next_best_move {
-                                Some(ref mut current_next_best_move) => {
-                                    if new_next_best_move.evaluation.compare_to(&current_next_best_move.evaluation) == Ordering::Greater ||
-                                        (new_next_best_move.board == current_next_best_move.board && new_next_best_move.evaluation != current_next_best_move.evaluation) {
-                                        *current_next_best_move = new_next_best_move;
-                                        should_reevaluate = true;
-                                    }
-                                }
-                                None => {
-                                    *current_next_best_move = Some(new_next_best_move);
+                        for i in 0..next_moves.len() {
+                            let next_position = next_moves[i];
+                            if next_position.0 == next_board {
+                                if (next_position.1.is_none() || next_position.1.unwrap().1 < next_board_new_evaluation_timestamp) {
+                                    next_moves[i].1 = Some((next_board_new_evaluation, next_board_new_evaluation_timestamp));
                                     should_reevaluate = true;
+                                }
+                                break;
+                            }
+                        }
+
+                        let mut best_move: Option<NextBestMove> = None;
+                        for next_move in next_moves.iter() {
+                            match best_move {
+                                None => {
+                                    if let Some((next_position_evaluation, _)) = next_move.1 {
+                                        best_move = Some(NextBestMove{board: next_move.0, evaluation: next_position_evaluation.invert()});
+                                    }
+                                },
+                                Some(present_best_move) => {
+                                    if let Some((next_position_evaluation, _)) = next_move.1 {
+                                        if next_position_evaluation.compare_to(&present_best_move.evaluation) == Ordering::Less {
+                                            best_move = Some(NextBestMove{board: next_move.0, evaluation: next_position_evaluation.invert()});
+                                        }
+                                    }
                                 }
                             }
                         }
 
-                        if should_reevaluate {
-                            let readable_board_arrangement_positions = board_arrangement_positions.read().unwrap();
-                            let board_state = readable_board_arrangement_positions.get(pointer_to_board.index).read().unwrap();
-                            let previous_moves = board_state.previous_moves.read().unwrap();
-                            positions_to_reevaluate.queue(previous_moves.iter().map(|pos| (depth-1, pos.clone())).collect());
+                        let mut current_next_best_move = board_state.next_best_move.write().unwrap();
+                        if let Some(best_move) = best_move {
+                            if current_next_best_move.is_none() || current_next_best_move.unwrap() != best_move {
+                                *current_next_best_move = Some(best_move);
+                                let queue: Vec<PositionToReevaluate> = board_state.previous_moves.read().unwrap().iter().map(|previous_board| {
+                                    (*previous_board, (board_to_reevaluate, (best_move.evaluation, Instant::now())))
+                                }).collect();
+                                positions_to_reevaluate.queue(queue);
+                            }
                         }
                     }
                 }

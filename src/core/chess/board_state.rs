@@ -1,6 +1,6 @@
 use std::{cmp::Ordering, collections::HashSet, sync::{RwLock}};
 
-use crate::core::chess::board::*;
+use crate::core::{chess::board::*, engine::structs::TimestampedEvaluation};
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum PositionResult {
@@ -59,7 +59,7 @@ impl Evaluation {
 
 pub struct BoardState {
 	pub self_evaluation: Evaluation,
-	pub next_moves: Box<[Board]>,
+	pub next_moves: Box<[(Board, Option<TimestampedEvaluation>)]>,
 
 	pub previous_moves: RwLock<HashSet<Board>>,
 

@@ -1,4 +1,6 @@
-use std::{collections::HashSet, sync::{Arc, RwLock}, thread::sleep, time::Duration};
+use std::{collections::HashSet, sync::{Arc, RwLock}, thread::sleep, time::{Duration, Instant}};
+
+use chrono::{DateTime, Utc};
 
 use crate::{App, core::{chess::board::Board, engine::{reevaluation_engine::move_board, structs::PositionToEvaluate}, structs::map::Presence}, log};
 pub static TIMED: RwLock<bool> = RwLock::new(false);
@@ -86,14 +88,14 @@ pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App) {
                     let readable_board_arrangement_positions = board_arrangement_positions.read().unwrap();
                     let mut writable_board_state = readable_board_arrangement_positions.get(value.index).write().unwrap();
                     writable_board_state.self_evaluation = evaluated_board_state.0;
-                    writable_board_state.next_moves = evaluated_board_state.1.clone();
+                    writable_board_state.next_moves = evaluated_board_state.1.clone().iter().map(|board| (board.clone(), None)).collect();
                     match previous_board {
                         Some(previous_board) => {
                             {
                                 writable_board_state.previous_moves.write().unwrap().insert(previous_board);
                             }
                             {
-                                positions_to_reevaluate.queue(vec!((board_depth, board)));
+                                positions_to_reevaluate.queue(vec!((previous_board, (board, (evaluated_board_state.0, Instant::now())))));
                             }
                         },
                         _ => {}

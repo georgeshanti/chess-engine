@@ -298,11 +298,11 @@ impl App {
     
                     let mut next_board: Option<Board> = None;
                     for next_move in board_state.next_moves.iter() {
-                        let source_piece = next_move.get(7-from_rank, 7-from_file);
-                        let target_piece = next_move.get(7-to_rank, 7-to_file);
+                        let source_piece = next_move.0.get(7-from_rank, 7-from_file);
+                        let target_piece = next_move.0.get(7-to_rank, 7-to_file);
                         // log!("Processing prompt: candidate:\n{}", next_move.inverted());
                         if get_presence(source_piece) == EMPTY && get_presence(target_piece) == PRESENT && get_color(target_piece) == BLACK {
-                            next_board = Some(*next_move);
+                            next_board = Some(next_move.0);
                             break;
                         }
                     }
