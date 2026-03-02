@@ -412,11 +412,20 @@ impl App {
         log!("queued");
         let mut threads: Vec<JoinHandle<()>> = Vec::new();
         log!("Starting {} threads", thread_count);
+        let (eval_sender, eval_receiver) = mpsc::channel::<(usize, Vec<PositionToEvaluate>)>();
+        let q = self.positions_to_evaluate.clone();
+        std::thread::Builder::new().name(String::from("eval_queuer")).spawn(move || {
+            loop {
+                let value = eval_receiver.recv().unwrap();
+                q.queue(value.0, value.1);
+            }
+        }).unwrap();
         for i  in 0..self.thread_stats.len() {
             let app = self.clone();
             let run_lock = self.run_lock.clone();
+            let eval_sender = eval_sender.clone();
             let join_handle = std::thread::Builder::new().name(format!("evaluation_engine_{}", i)).spawn(move || {
-                evaluation_engine(i, run_lock, app);
+                evaluation_engine(i, run_lock, app, eval_sender.clone());
             }).unwrap();
             threads.push(join_handle);
         }

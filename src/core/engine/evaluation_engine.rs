@@ -1,11 +1,11 @@
-use std::{collections::HashSet, sync::{Arc, RwLock}, thread::sleep, time::{Duration, Instant}};
+use std::{collections::HashSet, sync::{Arc, RwLock, mpsc::Sender}, thread::sleep, time::{Duration, Instant}};
 
 use chrono::{DateTime, Utc};
 
 use crate::{App, core::{chess::board::Board, engine::{reevaluation_engine::move_board, structs::PositionToEvaluate}, structs::map::Presence}, log};
 pub static TIMED: RwLock<bool> = RwLock::new(false);
 
-pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App) {
+pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App, eval_sender: Sender<(usize, Vec<PositionToEvaluate>)>) {
     let timed: bool = *TIMED.read().unwrap();
     // while time elapsed is less than 10 seconds
     log!("Evaluation engine started");
@@ -106,7 +106,8 @@ pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App) {
                     for next_board in evaluated_board_state.1 {
                         next_boards.push(PositionToEvaluate{ value: (Some(board), next_board) });
                     }
-                    positions_to_evaluate.queue(board_depth+1, next_boards);
+                    // positions_to_evaluate.queue(board_depth+1, next_boards);
+                    eval_sender.send((board_depth+1, next_boards)).unwrap();
                 },
                 Presence::Present { value } => {
                     if let Some(previous_board) = previous_board {
