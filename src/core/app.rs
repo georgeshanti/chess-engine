@@ -208,7 +208,7 @@ impl App {
             .split(board_pieces_pane).as_ref().try_into().unwrap();
         let [positions_evaluated_name_pane, positions_evaluated_value_pane] = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints(vec![Constraint::Percentage(50); 2])
+            .constraints(vec![Constraint::Length(21), Constraint::Fill(1)])
             .split(positions_evaluated_pane).as_ref().try_into().unwrap();
         let [positions_evaluated_pseudo_name_pane, positions_evaluated_pseudo_value_pane] = Layout::default()
             .direction(Direction::Horizontal)

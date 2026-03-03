@@ -418,32 +418,31 @@ pub fn can_come_after(source: &PieceArrangement, destination: &PieceArrangement)
 }
 
 fn match_pawns(source: Vec<u8>, destination: Vec<u8>) -> bool {
-    for destination_index in 0..destination.len() {
-        let destination_pawn = destination[destination_index];
-        for source_index in 0..source.len() {
-            let source_pawn = source[source_index];
-            let destination_pawn_rank = destination_pawn / 8;
-            let destination_pawn_file = destination_pawn % 8;
-            let source_pawn_rank = source_pawn / 8;
-            let source_pawn_file = source_pawn % 8;
+    let destination_index = 0;
+    let destination_pawn = destination[destination_index];
+    let destination_pawn_rank = destination_pawn / 8;
+    let destination_pawn_file = destination_pawn % 8;
+    for source_index in 0..source.len() {
+        let source_pawn = source[source_index];
+        let source_pawn_rank = source_pawn / 8;
+        let source_pawn_file = source_pawn % 8;
 
-            if source_pawn_rank > destination_pawn_rank {
-                continue;
+        if source_pawn_rank > destination_pawn_rank {
+            continue;
+        }
+        let rank_difference = destination_pawn_rank - source_pawn_rank;
+        let file_start = (source_pawn_file as i16 - rank_difference as i16).clamp(0, 7) as u8;
+        let file_end = (source_pawn_file as i16 + rank_difference as i16).clamp(0, 7) as u8;
+        if file_start <= destination_pawn_file && destination_pawn_file <= file_end {
+            let mut new_destination = destination.clone();
+            new_destination.remove(destination_index);
+            if new_destination.len() == 0 {
+                return true;
             }
-            let rank_difference = destination_pawn_rank - source_pawn_rank;
-            let file_start = (source_pawn_file as i16 - rank_difference as i16).clamp(0, 7) as u8;
-            let file_end = (source_pawn_file as i16 + rank_difference as i16).clamp(0, 7) as u8;
-            if file_start <= destination_pawn_file && destination_pawn_file <= file_end {
-                let mut new_destination = destination.clone();
-                new_destination.remove(destination_index);
-                if new_destination.len() == 0 {
-                    return true;
-                }
-                let mut new_source = source.clone();
-                new_source.remove(source_index);
-                if match_pawns(new_source, new_destination) {
-                    return true;
-                }
+            let mut new_source = source.clone();
+            new_source.remove(source_index);
+            if match_pawns(new_source, new_destination) {
+                return true;
             }
         }
     }
