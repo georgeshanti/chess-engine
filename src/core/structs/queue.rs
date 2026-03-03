@@ -88,6 +88,10 @@ pub struct Queue<T> {
     pub length: Arc<RwLock<usize>>,
 }
 
+fn lock_head_pointer<'a, T>(m: &'a Arc<Mutex<Arc<Mutex<Option<QueueNode<T>>>>>>) -> MutexGuard<'a, Arc<Mutex<Option<QueueNode<T>>>>> {
+    m.lock().unwrap()
+}
+
 fn lock_tail_pointer<'a, T>(m: &'a Arc<Mutex<Arc<Mutex<Option<QueueNode<T>>>>>>) -> MutexGuard<'a, Arc<Mutex<Option<QueueNode<T>>>>> {
     m.lock().unwrap()
 }
@@ -96,7 +100,7 @@ fn lock_tail<'a, T>(m: &'a Arc<Mutex<Option<QueueNode<T>>>>) -> MutexGuard<'a, O
     m.lock().unwrap()
 }
 
-fn lock_head<'a, T>(m: &'a Arc<Mutex<Arc<Mutex<Option<QueueNode<T>>>>>>) -> MutexGuard<'a, Arc<Mutex<Option<QueueNode<T>>>>> {
+fn lock_head<'a, T>(m: &'a Arc<Mutex<Option<QueueNode<T>>>>) -> MutexGuard<'a, Option<QueueNode<T>>> {
     m.lock().unwrap()
 }
 
@@ -150,7 +154,7 @@ impl<T: Clone> Queue<T> {
         if should_update_head {
             // println!("Updating head");
             {
-                let mut head_pointer = lock_head(&self.head);
+                let mut head_pointer = lock_head_pointer(&self.head);
                 *head_pointer = new_node;
             }
             // self.waiter.notify_all();
@@ -158,10 +162,10 @@ impl<T: Clone> Queue<T> {
     }
 
     pub fn dequeue_optional(&self) -> Option<Vec<T>> {
-        let mut head_pointer = self.head.lock().unwrap();
+        let mut head_pointer = lock_head_pointer(&self.head);
         // let start = SystemTime::now();
         let mut head = {
-            let scoped_head = head_pointer.lock().unwrap();
+            let scoped_head = lock_head(&*head_pointer);
                 match *scoped_head {
                     None => {
                         return None;
@@ -192,7 +196,7 @@ impl<T: Clone> Queue<T> {
         drop(head);
         *head_pointer = new_head.clone();
         if should_update_tail {
-            let mut tail_pointer = self.tail.lock().unwrap();
+            let mut tail_pointer = lock_tail_pointer(&self.tail);
             *tail_pointer = new_head.clone();
         }
 
