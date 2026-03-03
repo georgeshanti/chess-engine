@@ -1,18 +1,22 @@
-use std::{collections::BTreeMap, sync::{Arc, Mutex, RwLock}};
+use std::{collections::BTreeMap, sync::{Arc, Condvar, Mutex, RwLock}};
 
-use crate::{core::structs::{cash::Cash, queue::Queue, threaded_queue::ThreadedQueue}, log};
+use crate::{core::structs::{cash::Cash, lock::LockWaiter, queue::Queue, threaded_queue::ThreadedQueue}, log};
 
 #[derive(Clone)]
 pub struct WeightedQueue<T> {
     pub thread_count: usize,
     pub queues: Arc<RwLock<BTreeMap<usize, ThreadedQueue<T>>>>,
+    waiter: LockWaiter,
+    max: Arc<RwLock<usize>>,
 }
 
 impl<T: Clone> WeightedQueue<T> {
-    pub fn new(thread_count: usize) -> Self {
+    pub fn new(thread_count: usize, max: Arc<RwLock<usize>>, waiter: LockWaiter) -> Self {
         WeightedQueue {
             thread_count,
             queues: Arc::new(RwLock::new(BTreeMap::new())),
+            waiter: waiter,
+            max: max,
         }
     }
 
@@ -28,6 +32,7 @@ impl<T: Clone> WeightedQueue<T> {
                     let mut writable_queues = self.queues.write().unwrap();
                     let queue = ThreadedQueue::new(self.thread_count);
                     writable_queues.insert(weight, queue.clone());
+                    self.waiter.notify();
                     queue
                 }
             }
@@ -35,36 +40,40 @@ impl<T: Clone> WeightedQueue<T> {
         queues.queue(value);
     }
 
-    pub fn dequeue_optional(&self, max: usize) -> Option<(usize, Vec<T>)> {
-        // log!("Dequeueing from weighted queue with keys: {:?}", self.queues.read().unwrap().keys());
-        // Fetch largest weight queue
-        let largest_weight_queue = {
-            let readable_queues = self.queues.read().unwrap();
-            readable_queues.first_key_value().map(|(key, value)| (*key, value.clone()))
-        };
-        match largest_weight_queue {
-            Some((weight, queue)) => {
-                if weight > max {
-                    return None;
-                }
-                match queue.dequeue_optional() {
-                    Some(value) => {
-                        Some((weight, value))
-                    }
-                    None => {
-                        drop(queue);
-                        let mut writable_queues = self.queues.write().unwrap();
-                        let queue = writable_queues.get(&weight);
-                        if let Some(queue) = queue {
-                            if *queue.length.read().unwrap() == 0 {
-                                writable_queues.remove(&weight);
+    pub fn dequeue_optional(&self) -> Option<(usize, Vec<T>)> {
+        let mut max = self.max.read().unwrap();
+        loop {
+            // Fetch largest weight queue
+            let lowest_weight_queue = {
+                let readable_queues = self.queues.read().unwrap();
+                readable_queues.first_key_value().map(|(key, value)| (*key, value.clone()))
+            };
+            match lowest_weight_queue {
+                Some((weight, queue)) => {
+                    if weight > *max {
+                        drop(max);
+                        self.waiter.wait();
+                        max = self.max.read().unwrap();
+                    } else {
+                        match queue.dequeue_optional() {
+                            Some(value) => {
+                                return Some((weight, value))
+                            }
+                            None => {
+                                drop(queue);
+                                let mut writable_queues = self.queues.write().unwrap();
+                                let queue = writable_queues.get(&weight);
+                                if let Some(queue) = queue {
+                                    if *queue.length.read().unwrap() == 0 {
+                                        writable_queues.remove(&weight);
+                                    }
+                                }
                             }
                         }
-                        None
                     }
-                }
+                },
+                None => {},
             }
-            None => None,
         }
     }
 
@@ -86,10 +95,10 @@ pub struct DistributedWeightedQueue<T: Clone + Cash> {
 }
 
 impl<T: Clone + Cash> DistributedWeightedQueue<T> {
-    pub fn new(size: usize) -> Self {
+    pub fn new(size: usize, max: Arc<RwLock<usize>>, waiter: LockWaiter) -> Self {
         DistributedWeightedQueue {
             size,
-            queues: (0..size).map(|_| WeightedQueue::new(size)).collect(),
+            queues: (0..size).map(|_| WeightedQueue::new(size, max.clone(), waiter.clone())).collect(),
         }
     }
 
@@ -128,8 +137,8 @@ impl<T: Clone + Cash> DistributedWeightedQueue<T> {
         // self.queues.read().unwrap()[current_node].queue(value, weight);
     }
 
-    pub fn dequeue_optional(&self, i: usize, max: usize) -> Option<(usize, Vec<T>)> {
-        self.queues[i].dequeue_optional(max)
+    pub fn dequeue_optional(&self, i: usize) -> Option<(usize, Vec<T>)> {
+        self.queues[i].dequeue_optional()
     }
 
     pub fn len(&self) -> usize {

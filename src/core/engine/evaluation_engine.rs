@@ -14,7 +14,6 @@ pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App) {
     let positions = app.positions.clone();
     let positions_to_reevaluate = app.positions_to_reevaluate.clone();
     loop {
-        let run_lock_lock = app.run_lock.read().unwrap();
         // sleep(Duration::from_millis(500));
         if timed {
             if start_time.elapsed() > Duration::from_secs(4) {
@@ -42,7 +41,7 @@ pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App) {
                 if c > 10 {
                     break None;
                 }
-                match positions_to_evaluate.dequeue_optional(index, max_depth) {
+                match positions_to_evaluate.dequeue_optional(index) {
                     Some(value) => {
                         break Some(value)
                     }
@@ -57,6 +56,7 @@ pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App) {
                 None => continue,
             }
         };
+        let run_lock_lock = app.run_lock.read().unwrap();
         // if board_depth > 2 {
         //     continue;
         // }

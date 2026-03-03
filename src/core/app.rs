@@ -1,4 +1,4 @@
-use std::{sync::{Arc, Mutex, RwLock, mpsc::{self, Receiver, Sender}}, thread::{JoinHandle, sleep}, time::{Duration, Instant}};
+use std::{sync::{Arc, Condvar, Mutex, RwLock, mpsc::{self, Receiver, Sender}}, thread::{JoinHandle, sleep}, time::{Duration, Instant}};
 
 use mac_notification_sys::{Notification, Sound, send_notification};
 use ratatui::{Frame, crossterm::event::{Event, KeyCode, poll, read}, layout::{Alignment, Constraint, Direction, Layout, Margin, Rect}, widgets::{Block, Borders, Paragraph}};
@@ -6,7 +6,7 @@ use regex::Regex;
 use thousands::Separable;
 use tui_input::{Input, backend::crossterm::EventHandler};
 
-use crate::{core::{chess::{board::Board, initial_board::INITIAL_BOARD, piece::{BLACK, EMPTY, PRESENT, get_color, get_presence}}, engine::{evaluation_engine::evaluation_engine, prune_engine::prune_engine, reevaluation_engine::reevaluation_engine, structs::{PositionToEvaluate, PositionsToEvaluate, PositionsToReevaluate}}, structs::{map::{GroupedPositions, Positions}, queue::DistributedQueue, weighted_queue::DistributedWeightedQueue}}, log};
+use crate::{core::{chess::{board::Board, initial_board::INITIAL_BOARD, piece::{BLACK, EMPTY, PRESENT, get_color, get_presence}}, engine::{evaluation_engine::evaluation_engine, prune_engine::prune_engine, reevaluation_engine::reevaluation_engine, structs::{PositionToEvaluate, PositionsToEvaluate, PositionsToReevaluate}}, structs::{lock::LockWaiter, map::{GroupedPositions, Positions}, queue::DistributedQueue, weighted_queue::DistributedWeightedQueue}}, log};
 
 use serde_json;
 
@@ -27,14 +27,17 @@ pub struct App {
     pub start_time: std::time::Instant,
     pub status: Arc<RwLock<String>>,
     pub current_depth: Arc<RwLock<usize>>,
+    pub waiter: LockWaiter,
 }
 
 impl App {
 
     pub fn new(thread_count: usize) -> App {
+        let depth = Arc::new(RwLock::new(5));
+        let waiter = LockWaiter::new();
         let mut app = App {
             positions: GroupedPositions::new(thread_count),
-            positions_to_evaluate: DistributedWeightedQueue::new(thread_count),
+            positions_to_evaluate: DistributedWeightedQueue::new(thread_count, depth.clone(), waiter.clone()),
             positions_to_reevaluate: DistributedQueue::new(thread_count),
             run_lock:  Arc::new(RwLock::new(())),
             current_board: Arc::new(RwLock::new(INITIAL_BOARD)),
@@ -47,7 +50,8 @@ impl App {
             prompt: Arc::new(RwLock::new(String::from("Enter move:"))),
             start_time: std::time::Instant::now(),
             status: Arc::new(RwLock::new(String::from("Evaluating..."))),
-            current_depth: Arc::new(RwLock::new(4)),
+            current_depth: depth,
+            waiter: waiter,
         };
     
         for _ in 0..thread_count {
@@ -390,6 +394,7 @@ impl App {
             {
                 let app = self.clone();
                 *(app.current_depth.write().unwrap()) = depth + 2;
+                self.waiter.notify();
             }
             send_notification(
                 "NOW",
