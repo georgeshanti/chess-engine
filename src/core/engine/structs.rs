@@ -1,10 +1,16 @@
 use std::time::Instant;
 
 use crate::core::{chess::{board::Board, board_state::Evaluation}, structs::{cash::Cash, queue::DistributedQueue, weighted_queue::DistributedWeightedQueue}};
+use serde::{Serialize, Deserialize};
+use serde_big_array::BigArray;
 
 pub type PositionsToEvaluate = DistributedWeightedQueue<PositionToEvaluate>;
 pub type PositionToReevaluate = (Board, (Board, TimestampedEvaluation));
-pub type TimestampedEvaluation = (Evaluation, std::time::Instant);
+#[derive(Serialize, Deserialize, Clone, Copy)]
+pub struct TimestampedEvaluation {
+    pub eval: Evaluation,
+    pub instance: std::time::SystemTime
+}
 pub type PositionsToReevaluate = DistributedQueue<PositionToReevaluate>;
 
 #[derive(Clone, Copy)]

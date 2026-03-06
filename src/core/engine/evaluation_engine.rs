@@ -2,7 +2,7 @@ use std::{collections::HashSet, sync::{Arc, RwLock, mpsc::Sender}, thread::sleep
 
 use chrono::{DateTime, Utc};
 
-use crate::{App, core::{chess::board::Board, engine::{reevaluation_engine::move_board, structs::PositionToEvaluate}, structs::map::Presence}, log};
+use crate::{App, core::{chess::board::Board, engine::{reevaluation_engine::move_board, structs::{PositionToEvaluate, TimestampedEvaluation}}, structs::map::Presence}, log};
 pub static TIMED: RwLock<bool> = RwLock::new(false);
 
 pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App, eval_sender: Sender<(usize, Vec<PositionToEvaluate>)>) {
@@ -95,7 +95,7 @@ pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App, eval
                                 writable_board_state.previous_moves.write().unwrap().insert(previous_board);
                             }
                             {
-                                positions_to_reevaluate.queue(vec!((previous_board, (board, (evaluated_board_state.0, Instant::now())))));
+                                positions_to_reevaluate.queue(vec!((previous_board, (board, TimestampedEvaluation{ eval: evaluated_board_state.0, instance: std::time::SystemTime::now()}))));
                             }
                         },
                         _ => {}
@@ -124,7 +124,7 @@ pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App, eval
                                     next_best_move.evaluation
                                 }
                             };
-                            positions_to_reevaluate.queue(vec!((previous_board, (board, (eval, Instant::now())))));
+                            positions_to_reevaluate.queue(vec!((previous_board, (board, TimestampedEvaluation{eval: eval, instance: std::time::SystemTime::now()}))));
                         }
                     }
                 },

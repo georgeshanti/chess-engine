@@ -1,8 +1,10 @@
 use std::{cmp::Ordering, collections::HashSet, fmt::Display, sync::RwLock};
 
 use crate::core::{chess::board::*, engine::structs::TimestampedEvaluation};
+use serde::{Serialize, Deserialize};
+use serde_big_array::BigArray;
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum PositionResult {
     Win,
     Scored,
@@ -22,7 +24,7 @@ impl Display for PositionResult {
     }
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Evaluation {
     pub result: PositionResult,
     pub score: i32,
@@ -75,6 +77,7 @@ impl Evaluation {
     }
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct BoardState {
 	pub self_evaluation: Evaluation,
 	pub next_moves: Box<[(Board, Option<TimestampedEvaluation>)]>,
@@ -84,7 +87,7 @@ pub struct BoardState {
 	pub next_best_move: RwLock<Option<NextBestMove>>,
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct NextBestMove {
 	pub board: Board,
 	pub evaluation: Evaluation,

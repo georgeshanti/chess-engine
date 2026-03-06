@@ -1,6 +1,6 @@
 use std::{cmp::Ordering, sync::{RwLock, mpsc::{self, Receiver, Sender}}, thread::sleep, time::{Duration, Instant}};
 
-use crate::{core::{app::App, chess::{board::{Board, BoardArrangement}, board_state::NextBestMove}, engine::structs::{PositionToReevaluate, PositionsToReevaluate}, structs::map::{GroupedPositions, Positions}}, log};
+use crate::{core::{app::App, chess::{board::{Board, BoardArrangement}, board_state::NextBestMove}, engine::structs::{PositionToReevaluate, PositionsToReevaluate, TimestampedEvaluation}, structs::map::{GroupedPositions, Positions}}, log};
 use std::sync::LazyLock;
 
 pub static move_board: LazyLock<RwLock<Board>> = LazyLock::new(|| RwLock::new(Board::new()));
@@ -64,7 +64,9 @@ pub fn reevaluation_thread(positions_to_reevaluate: PositionsToReevaluate, posit
                 None => break,
             };
 
-            for (board_to_reevaluate, (next_board, (next_board_new_evaluation, next_board_new_evaluation_timestamp))) in value {
+            for (board_to_reevaluate, (next_board, timestamped_evaluation)) in value {
+                let next_board_new_evaluation = timestamped_evaluation.eval;
+                let next_board_new_evaluation_timestamp = timestamped_evaluation.instance;
                 if board_to_reevaluate == *move_board.read().unwrap() {
                     log!("Checking move: {}", next_board);
                     log!("Move eval: {}", next_board_new_evaluation);
@@ -80,8 +82,8 @@ pub fn reevaluation_thread(positions_to_reevaluate: PositionsToReevaluate, posit
                         for i in 0..next_moves.len() {
                             let next_position = next_moves[i];
                             if next_position.0 == next_board {
-                                if (next_position.1.is_none() || next_position.1.unwrap().1 < next_board_new_evaluation_timestamp) {
-                                    next_moves[i].1 = Some((next_board_new_evaluation, next_board_new_evaluation_timestamp));
+                                if (next_position.1.is_none() || next_position.1.unwrap().instance < next_board_new_evaluation_timestamp) {
+                                    next_moves[i].1 = Some(TimestampedEvaluation{eval: next_board_new_evaluation, instance: next_board_new_evaluation_timestamp});
                                     should_reevaluate = true;
                                 }
                                 break;
@@ -90,7 +92,8 @@ pub fn reevaluation_thread(positions_to_reevaluate: PositionsToReevaluate, posit
 
                         let mut best_move: Option<NextBestMove> = None;
                         for next_move in next_moves.iter() {
-                            if let Some((next_position_evaluation, _)) = next_move.1 {
+                            if let Some(timestamped_evaluation) = next_move.1 {
+                                let next_position_evaluation = timestamped_evaluation.eval;
                                 let next_position_evaluation_inverted = next_position_evaluation.invert();
                                 match best_move {
                                     None => {
@@ -110,7 +113,7 @@ pub fn reevaluation_thread(positions_to_reevaluate: PositionsToReevaluate, posit
                             if current_next_best_move.is_none() || current_next_best_move.unwrap() != best_move {
                                 *current_next_best_move = Some(best_move);
                                 let queue: Vec<PositionToReevaluate> = board_state.previous_moves.read().unwrap().iter().map(|previous_board| {
-                                    (*previous_board, (board_to_reevaluate, (best_move.evaluation, Instant::now())))
+                                    (*previous_board, (board_to_reevaluate, TimestampedEvaluation{eval: best_move.evaluation, instance: std::time::SystemTime::now()}))
                                 }).collect();
                                 positions_to_reevaluate.queue(queue);
                             }

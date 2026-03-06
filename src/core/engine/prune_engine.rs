@@ -41,7 +41,10 @@ fn prune_thread(positions: Positions, receiver: Receiver<Board>, sender: Sender<
         };
         for key in keys {
             let mut writable_map = positions.map.write().unwrap();
+            let mut writable_array = positions.array.write().unwrap();
             if !can_come_after_board_arrangement(&root_board.get_board_arrangement(), &key) {
+                let index = *writable_map.get(&key).unwrap();
+                writable_array.remove(index);
                 writable_map.remove(&key);
             }
             drop(writable_map);

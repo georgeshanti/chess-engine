@@ -1,6 +1,10 @@
-use std::{collections::{HashMap, HashSet}, hash::{DefaultHasher, Hash, Hasher, RandomState}, sync::{Arc, RwLock, Weak}};
+use std::{collections::{HashMap, HashSet}, fs::{File, remove_file}, hash::{DefaultHasher, Hash, Hasher, RandomState}, sync::{Arc, RwLock, Weak}};
 
-use crate::{core::{chess::{board::{Board, BoardArrangement}, board_state::BoardState}, structs::cash::Cash}, log};
+use crate::{core::{chess::{board::{Board, BoardArrangement}, board_state::BoardState}, structs::{cash::Cash, lru::{ArrayInternal, Loader, Lru}}}, log};
+use chrono::Utc;
+use serde::{Serialize, Deserialize};
+use serde_big_array::{Array, BigArray};
+use serde_with::serde_as;
 
 pub struct PointerToBoard {
     pub ptr: Weak<RwLock<BoardArrangementPositions>>,
@@ -53,19 +57,53 @@ impl GroupedPositions {
     }
 }
 
+pub static COLD_CACHE: RwLock<String> = RwLock::new(String::new());
+
+pub struct Mapper {}
+
+impl Loader<Arc<RwLock<BoardArrangementPositions>>, String> for Mapper{
+    fn load(cold: &String) -> Arc<RwLock<BoardArrangementPositions>> {
+        let file_path = format!("./{}/{}", COLD_CACHE.read().unwrap(), cold);
+        let reader = File::open(file_path.clone()).unwrap();
+        log!("file_path: {}", file_path);
+        let hot = serde_json::from_reader(reader).unwrap();
+        remove_file(cold).unwrap();
+        return Arc::new(RwLock::new(hot));
+    }
+
+    fn store(hot: &Arc<RwLock<BoardArrangementPositions>>) -> String {
+        let file_name = chrono::Local::now().format("%Y-%m-%d_%H-%M-%S").to_string();
+        let file_path = format!("./{}/{}", COLD_CACHE.read().unwrap(), file_name);
+        log!("{}", file_path);
+        let writer = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .open(file_path).unwrap();
+        let board_arrangement_positions = hot.read().unwrap();
+        let t = &*board_arrangement_positions;
+        serde_json::to_writer(writer, t).unwrap();
+        file_name
+    }
+}
+
 #[derive(Clone)]
 pub struct Positions {
     pub map: Arc<RwLock<HashMap<
         BoardArrangement,
-        Arc<RwLock<BoardArrangementPositions>>
-    >>>
+        usize
+    >>>,
+    pub array: Arc<RwLock<ArrayInternal<Arc<RwLock<BoardArrangementPositions>>, String, Mapper>>>,
 }
 
 pub const PAGE_SIZE: usize = 4096 * 1024;
 pub const PAGE_BOARD_COUNT: usize = PAGE_SIZE / size_of::<RwLock<BoardState>>();
 
+#[serde_as]
+#[derive(Serialize, Deserialize)]
 pub struct BoardArrangementPositions {
+    #[serde_as(as = "Vec<(_, _)>")]
     pub map: HashMap<Board, usize>,
+    #[serde(with = "BigArray")]
     pub positions: [Option<Box<Vec<RwLock<BoardState>>>>; 128],
     pub size: usize,
 }
@@ -102,6 +140,7 @@ impl Positions {
     pub fn new() -> Self {
         Positions {
             map: Arc::new(RwLock::new(HashMap::new())),
+            array: Arc::new(RwLock::new(ArrayInternal::new(Mapper{}))),
         }
     }
 
@@ -109,16 +148,18 @@ impl Positions {
         let readable_board_pieces_map = self.map.read().unwrap();
         let board_arrangement = board.get_board_arrangement();
         let board_pieces_map = readable_board_pieces_map.get(&board_arrangement);
+        let mut array = self.array.write().unwrap();
         match board_pieces_map {
-            Some(board_pieces_map) => board_pieces_map.clone(),
+            Some(board_pieces_map) => array.get(*board_pieces_map).clone(),
             None => {
                 drop(readable_board_pieces_map);
                 let mut writable_board_pieces_map = self.map.write().unwrap();
                 match writable_board_pieces_map.get(&board_arrangement) {
-                    Some(board_pieces_map) => board_pieces_map.clone(),
+                    Some(board_pieces_map) => array.get(*board_pieces_map).clone(),
                     None => {
                         let new_board_pieces_map = Arc::new(RwLock::new(BoardArrangementPositions::new()));
-                        writable_board_pieces_map.insert(board_arrangement, new_board_pieces_map.clone());
+                        let index = array.push(new_board_pieces_map.clone());
+                        writable_board_pieces_map.insert(board_arrangement, index);
                         new_board_pieces_map
                     }
                 }
@@ -130,7 +171,10 @@ impl Positions {
         let readable_board_pieces_map = self.map.read().unwrap();
         let board_arrangement = board.get_board_arrangement();
         let board_pieces_map = readable_board_pieces_map.get(&board_arrangement);
-        board_pieces_map.map(|board_pieces_map| board_pieces_map.clone())
+        let mut array = self.array.write().unwrap();
+        board_pieces_map.map(|board_pieces_map| {
+            array.get(*board_pieces_map).clone()
+        })
     }
 
     // pub fn is_present(&self, board: &Board) -> bool {
@@ -194,11 +238,6 @@ impl Positions {
     }
 
     pub fn len(&self) -> String {
-        let mut len = 0;
-        for (_, value) in self.map.read().unwrap().iter() {
-            let board_arrangement_positions = value.read().unwrap();
-            len = len + board_arrangement_positions.size;
-        }
-        format!("{}: {}", self.map.read().unwrap().len(), len)
+        format!("{}", self.map.read().unwrap().len())
     }
 }

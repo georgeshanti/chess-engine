@@ -2,16 +2,26 @@ mod core;
 
 use mac_notification_sys::*;
 
-use crate::core::{app::App, chess::board::{Board, BoardArrangement}, engine::reevaluation_engine::{move_board, move_board_arrangement}, log::FILENAME};
+use crate::core::{app::App, chess::board::{Board, BoardArrangement}, engine::reevaluation_engine::{move_board, move_board_arrangement}, log::FILENAME, structs::map::COLD_CACHE};
 
 fn main() {
 
     let bundle = get_bundle_identifier_or_default("firefox");
     set_application(&bundle).unwrap();
     unsafe {
-        let f = format!("logs/{}.log", chrono::Local::now().format("%Y-%m-%d_%H-%M-%S").to_string());
-        let mut file_name = FILENAME.write().unwrap();
-        *file_name = f;
+        {
+            let f = format!("logs/{}.log", chrono::Local::now().format("%Y-%m-%d_%H-%M-%S").to_string());
+            let mut file_name = FILENAME.write().unwrap();
+            *file_name = f;
+        }
+        {
+            let f = format!("boards/{}", chrono::Local::now().format("%Y-%m-%d_%H-%M-%S").to_string());
+            let mut file_name = COLD_CACHE.write().unwrap();
+            *file_name = f.clone();
+            let t = format!("{}/tro", f.clone());
+            log!("file: {}", f.clone());
+            std::fs::create_dir_all(std::path::Path::new(&t).parent().unwrap()).unwrap();
+        }
 
         match std::env::var("LOG") {
             Ok(value) => {
