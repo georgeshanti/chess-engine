@@ -62,7 +62,8 @@ pub struct Positions {
 }
 
 pub const PAGE_SIZE: usize = 4096 * 1024;
-pub const PAGE_BOARD_COUNT: usize = PAGE_SIZE / size_of::<RwLock<BoardState>>();
+// pub const PAGE_BOARD_COUNT: usize = PAGE_SIZE / size_of::<RwLock<BoardState>>();
+pub const PAGE_BOARD_COUNT: usize = 4096;
 
 pub struct BoardArrangementPositions {
     pub map: HashMap<Board, usize>,
@@ -182,7 +183,6 @@ impl Positions {
                     }
                     let k = k.unwrap();
                     *k = Some(Box::new(Vec::with_capacity(PAGE_BOARD_COUNT)));
-                    // log!("Created new page");
                 }
                 let vec = writable_board_arrangement_positions.positions.get_mut(page).unwrap().as_mut().unwrap();
                 vec.push(RwLock::new(BoardState::new()));

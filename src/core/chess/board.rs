@@ -201,12 +201,14 @@ impl Board {
                 _ => panic!("Invalid piece type"),
             }
         }
-        moves.iter().map(|&board| {
+        moves.iter_mut().for_each(|board| {
             let mut new_board = board.clone();
             new_board = new_board.inverted();
             new_board.normalize_opponent_pieces();
-            new_board
-        }).collect()
+            *board = new_board
+        });
+        moves.shrink_to_fit();
+        moves
     }
 
     fn is_opponent_in_check(self: &Self) -> bool {
