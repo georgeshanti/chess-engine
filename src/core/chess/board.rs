@@ -14,7 +14,7 @@ use serde_big_array::BigArray;
 #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, Debug)]
 pub struct Board {
     #[serde(with = "BigArray")]
-    pub pieces: [u8; 64],
+    pub pieces: [u8; 32],
 }
 
 impl Cash for Board {
@@ -52,16 +52,41 @@ impl Coordinates<(i8, i8)> for (i8, i8) {
 }
 
 impl Board {
+
+    pub fn from_u8_64(pieces: [u8; 64]) -> Self {
+        let mut board = Board::new();
+        for i in 0..64 {
+            board.set_index(i, pieces[i]);
+        }
+        board
+    }
+
     pub fn new() -> Self {
-        Self { pieces: [0; 64] }
+        Self { pieces: [0; 32] }
     }
 
     pub fn get(self: &Self, rank: usize, file: usize) -> u8 {
-        self.pieces[rank*8+file]
+        self.get_index(rank*8+file)
     }
 
     pub fn set(self: &mut Self, rank: usize, file: usize, piece: u8) {
-        self.pieces[rank*8+file] = piece
+        self.set_index(rank*8+file, piece)
+    }
+
+    pub fn get_index(self: &Self, i: usize) -> u8 {
+        let sub_index = i/2;
+        let offset = 4*(i%2);
+        (self.pieces[sub_index] >> offset) & 0b00001111
+    }
+
+    pub fn set_index(self: &mut Self, i: usize, piece: u8) {
+        let sub_index = i/2;
+        let offset = 4*(i%2);
+        if offset == 0 {
+            self.pieces[sub_index] = (self.pieces[sub_index] & 0b11110000) | piece
+        } else {
+            self.pieces[sub_index] = (self.pieces[sub_index] & 0b00001111) | (piece << 4)
+        }
     }
 
     pub fn clone(self: &Self) -> Self {
@@ -74,10 +99,10 @@ impl Board {
         // Board{pieces: xor_byte(self.pieces, COLOR_BITS)}
         let mut new_board = Board::new();
         for i in 0..64 {
-            if get_presence(self.pieces[i]) == PRESENT {
-                new_board.pieces[63-i] = negate_color(self.pieces[i]);
+            if get_type(self.get_index(i)) != EMPTY {
+                new_board.set_index(63-i, negate_color(self.get_index(i)));
             } else {
-                new_board.pieces[63-i] = 0b0;
+                new_board.set_index(63-i, 0b0);
             }
         }
         return new_board;
@@ -85,30 +110,29 @@ impl Board {
 
     pub fn normalize_opponent_pieces(self: &mut Self) {
         for i in 0..64 {
-            if self.pieces[i] == PRESENT | BLACK | PAWN | HAS_MOVED_TWO_SQUARES {
-                self.pieces[i] = PRESENT | BLACK | PAWN | HAS_NOT_MOVED_TWO_SQUARES
+            if self.get_index(i) == BLACK | PAWN_TWO {
+                self.set_index(i, BLACK | PAWN);
             }
         }
     }
 
     #[inline(never)]
     pub fn find_moves(self: &Self) -> Vec<Board> {
-        let presence_board = Board {pieces: and_byte(self.pieces, PRESENCE_BITS)};
         let color_board = Board {pieces: and_byte(self.pieces, COLOR_BITS)};
         let type_board = Board {pieces: and_byte(self.pieces, TYPE_BITS)};
         let mut vec_length: usize = 0;
         for i in 0..64 {
-            if presence_board.pieces[i] == EMPTY || color_board.pieces[i] == BLACK {
+            if type_board.get_index(i) == EMPTY || color_board.get_index(i) == BLACK {
                 continue;
             }
-            vec_length +=  get_max_movement(type_board.pieces[i]);
+            vec_length +=  get_max_movement(type_board.get_index(i));
         }
         let mut moves = Vec::with_capacity(vec_length);
         for i in 0..64 {
-            if presence_board.pieces[i] == EMPTY || color_board.pieces[i] == BLACK {
+            if type_board.get_index(i) == EMPTY || color_board.get_index(i) == BLACK {
                 continue;
             }
-            // if get_presence(piece) == EMPTY || get_color(piece) == BLACK {
+            // if get_type(piece) == EMPTY || get_color(piece) == BLACK {
             //     continue;
             // }
             let rank = i / 8;
@@ -119,19 +143,19 @@ impl Board {
             //         type_board = Some(Board {pieces: and_byte(self.pieces, TYPE_BITS)});
             //     }
             // };
-            match type_board.pieces[i] {
+            match type_board.get_index(i) {
             // match get_type(source_piece) {
                 PAWN => {
-                    if rank<7 && presence_board.get(rank+1, file) == EMPTY {
+                    if rank<7 && type_board.get(rank+1, file) == EMPTY {
                         let mut new_board = self.clone();
                         new_board.set(rank, file, EMPTY);
-                        new_board.set(rank+1, file, PRESENT | WHITE | PAWN | HAS_NOT_MOVED_TWO_SQUARES);
+                        new_board.set(rank+1, file, WHITE | PAWN);
                         moves.push(new_board);
 
-                        if rank<6 && presence_board.get(rank+2, file) == EMPTY {
+                        if rank<6 && type_board.get(rank+2, file) == EMPTY {
                             let mut new_board = self.clone();
                             new_board.set(rank, file, EMPTY);
-                            new_board.set(rank+2, file, PRESENT | WHITE | PAWN | HAS_MOVED_TWO_SQUARES);
+                            new_board.set(rank+2, file, WHITE | PAWN_TWO);
                             moves.push(new_board);
                         }
                     }
@@ -139,24 +163,24 @@ impl Board {
                         let destination: (i8, i8) = diagonal.add((rank as i8, file as i8));
                         if (0<=destination.0) && (destination.0<8) && 0<=destination.1 && destination.1<8 {
                             let destination = destination.as_usize();
-                            let target_piece_presence = presence_board.get(destination.0, destination.1);
+                            let target_piece_type = type_board.get(destination.0, destination.1);
                             let target_piece_color = color_board.get(destination.0, destination.1);
-                            if target_piece_presence == PRESENT && target_piece_color == BLACK {
+                            if target_piece_type != EMPTY && target_piece_color == BLACK {
                                 let mut new_board = self.clone();
                                 new_board.set(rank, file, EMPTY);
-                                new_board.set(destination.0, destination.1, PRESENT | WHITE | PAWN | HAS_NOT_MOVED_TWO_SQUARES);
+                                new_board.set(destination.0, destination.1, WHITE | PAWN);
                                 moves.push(new_board);
                             }
                         }
                     }
                 },
                 ROOK | BISHOP | QUEEN | KNIGHT | KING => {
-                    let max_distance: i8 = match type_board.pieces[i] {
+                    let max_distance: i8 = match type_board.get_index(i) {
                         ROOK | BISHOP | QUEEN => 8,
                         KNIGHT | KING => 2,
                         _ => panic!("Not a valid type")
                     };
-                    let directions = match type_board.pieces[i] {
+                    let directions = match type_board.get_index(i) {
                         ROOK => &ROOK_DIRECTIONS[..],
                         BISHOP => &BISHOP_DIRECTIONS[..],
                         QUEEN | KING => &QUEEN_DIRECTIONS[..],
@@ -171,23 +195,23 @@ impl Board {
                                 let destination: (i8, i8) = direction.multiply(distance).add((rank as i8, file as i8));
                                 if (0<=destination.0) && (destination.0<8) && 0<=destination.1 && destination.1<8 {
                                     let destination = destination.as_usize();
-                                    let piece_presence = presence_board.get(destination.0, destination.1);
+                                    let piece_presence = type_board.get(destination.0, destination.1);
                                     let piece_color = color_board.get(destination.0, destination.1);
                                     if piece_presence == EMPTY {
-                                        if type_board.pieces[i] == KNIGHT {
+                                        if type_board.get_index(i) == KNIGHT {
                                         }
                                         let mut new_board = self.clone();
                                         new_board.set(rank, file, EMPTY);
-                                        new_board.set(destination.0, destination.1, PRESENT | WHITE | type_board.pieces[i]);
+                                        new_board.set(destination.0, destination.1, WHITE | type_board.get_index(i));
                                         moves.push(new_board);
                                     } else {
                                         can_move_in_directions[direction_idx] = false;
                                         if piece_color == BLACK {
-                                            if type_board.pieces[i] == KNIGHT {
+                                            if type_board.get_index(i) == KNIGHT {
                                             }
                                             let mut new_board = self.clone();
                                             new_board.set(rank, file, EMPTY);
-                                            new_board.set(destination.0, destination.1, PRESENT | WHITE | type_board.pieces[i]);
+                                            new_board.set(destination.0, destination.1, WHITE | type_board.get_index(i));
                                             moves.push(new_board);
                                         }
                                     }
@@ -217,7 +241,7 @@ impl Board {
         for rank in 0..8 {
             for file in 0..8 {
                 let piece = self.get(rank, file);
-                if get_presence(piece) == PRESENT && get_color(piece) == BLACK && get_type(piece) == KING {
+                if get_type(piece) != EMPTY && get_color(piece) == BLACK && get_type(piece) == KING {
                     king_rank = rank as i8;
                     king_file = file as i8;
                     break;
@@ -235,7 +259,7 @@ impl Board {
                     if (0<=destination.0) && (destination.0<8) && (0<=destination.1) && (destination.1<8) {
                         let destination = destination.as_usize();
                         let piece = self.get(destination.0, destination.1);
-                        if get_presence(piece) == PRESENT {
+                        if get_type(piece) != EMPTY {
                             if get_color(piece) == WHITE {
                                 if ROOK_DIRECTIONS.contains(&direction) && get_type(piece) == ROOK {
                                     return true;
@@ -286,8 +310,8 @@ impl Board {
         }
         let mut material = 0;
         for i in 0..64 {
-            let piece = self.pieces[i];
-            if get_presence(piece) == PRESENT {
+            let piece = self.get_index(i);
+            if get_type(piece) != EMPTY {
                 let multiplier: i8 = match get_color(piece) {
                     WHITE => 1,
                     BLACK => -1,
@@ -320,23 +344,27 @@ impl Board {
         let mut black_major: [u8; 6] = [0; 6];
         let type_board = Board {pieces: and_byte(self.pieces, TYPE_BITS)};
         for i in 0..64 {
-            let piece = self.pieces[i];
-            if get_presence(piece) == EMPTY {
+            let piece = self.get_index(i);
+            if get_type(piece) == EMPTY {
                 continue;
             } else {
-                let piece_type = type_board.pieces[i];
-                if piece_type == PAWN {
+                let piece_type = type_board.get_index(i);
+                if piece_type == PAWN || piece_type == PAWN_TWO {
+                    let index = 0;
                     if get_color(piece) == WHITE {
                         white_pawns = white_pawns | (1 << i);
+                        white_major[index as usize] = white_major[index as usize] + 1;
                     } else {
                         black_pawns = black_pawns | (1 << 63-i);
+                        black_major[index as usize] = black_major[index as usize] + 1;
                     }
-                }
-                let index = (piece_type >> 3) - 1;
-                if get_color(piece) == WHITE {
-                    white_major[index as usize] = white_major[index as usize] + 1;
                 } else {
-                    black_major[index as usize] = black_major[index as usize] + 1;
+                    let index = piece_type - 2;
+                    if get_color(piece) == WHITE {
+                        white_major[index as usize] = white_major[index as usize] + 1;
+                    } else {
+                        black_major[index as usize] = black_major[index as usize] + 1;
+                    }
                 }
             }
         }
@@ -400,17 +428,17 @@ impl Board {
 pub fn can_come_after(source: &PieceArrangement, destination: &PieceArrangement) -> bool {
     let mut extra_pieces = 0;
     for i in 0..6 {
-        if i == (PAWN >> 3) as usize {
+        if i == 0 as usize {
             continue;
         }
         if destination.major_pieces[i] > source.major_pieces[i] {
             extra_pieces += destination.major_pieces[i] - source.major_pieces[i];
         }
     }
-    if destination.major_pieces[(PAWN >> 3) as usize - 1] > source.major_pieces[(PAWN >> 3) as usize - 1] {
+    if destination.major_pieces[0] > source.major_pieces[0] {
         return false;
     }
-    let missing_pawns = source.major_pieces[(PAWN >> 3) as usize - 1] - destination.major_pieces[(PAWN >> 3) as usize - 1];
+    let missing_pawns = source.major_pieces[0] - destination.major_pieces[0];
     if missing_pawns < extra_pieces {
         return false;
     }
@@ -501,13 +529,13 @@ pub fn can_come_after_board_arrangement(source: &BoardArrangement, destination: 
 
 impl Display for BoardArrangement {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut board = Board { pieces: [0; 64] };
+        let mut board = Board { pieces: [0; 32] };
         for i in 0..64 {
             if 1<<i & self.higher.pawns != 0 {
-                board.set(i / 8, i % 8, PRESENT | WHITE | PAWN | HAS_NOT_MOVED_TWO_SQUARES);
+                board.set(i / 8, i % 8, WHITE | PAWN);
             }
             if 1<<i & self.lower.pawns != 0 {
-                board.set((63-i) / 8, (63-i) % 8, PRESENT | BLACK | PAWN | HAS_NOT_MOVED_TWO_SQUARES);
+                board.set((63-i) / 8, (63-i) % 8, BLACK | PAWN);
             }
         }
         board.fmt(f)

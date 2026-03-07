@@ -6,7 +6,7 @@ use regex::Regex;
 use thousands::Separable;
 use tui_input::{Input, backend::crossterm::EventHandler};
 
-use crate::{core::{chess::{board::Board, initial_board::INITIAL_BOARD, piece::{BLACK, EMPTY, PRESENT, get_color, get_presence}}, engine::{evaluation_engine::evaluation_engine, prune_engine::prune_engine, reevaluation_engine::reevaluation_engine, structs::{PositionToEvaluate, PositionsToEvaluate, PositionsToReevaluate}}, structs::{lock::LockWaiter, map::{GroupedPositions, Positions}, queue::DistributedQueue, weighted_queue::DistributedWeightedQueue}}, log};
+use crate::{core::{chess::{board::Board, initial_board::INITIAL_BOARD, piece::{BLACK, EMPTY, get_color, get_type}}, engine::{evaluation_engine::evaluation_engine, prune_engine::prune_engine, reevaluation_engine::reevaluation_engine, structs::{PositionToEvaluate, PositionsToEvaluate, PositionsToReevaluate}}, structs::{lock::LockWaiter, map::{GroupedPositions, Positions}, queue::DistributedQueue, weighted_queue::DistributedWeightedQueue}}, log};
 
 use serde_json;
 
@@ -40,7 +40,7 @@ impl App {
             positions_to_evaluate: DistributedWeightedQueue::new(thread_count, depth.clone(), waiter.clone()),
             positions_to_reevaluate: DistributedQueue::new(thread_count),
             run_lock:  Arc::new(RwLock::new(())),
-            current_board: Arc::new(RwLock::new(INITIAL_BOARD)),
+            current_board: Arc::new(RwLock::new(*INITIAL_BOARD)),
             thread_stats: Vec::with_capacity(thread_count),
             thread_count: thread_count,
             positions_evaluated_acount: Arc::new(RwLock::new(0)),
@@ -282,8 +282,8 @@ impl App {
 
             log!("Processing prompt: from_file: {}, from_rank: {}, to_file: {}, to_rank: {}", from_file, from_rank, to_file, to_rank);
 
-            if get_presence(source_piece) == EMPTY || get_color(source_piece) == BLACK || !(get_presence(target_piece) == EMPTY || get_color(target_piece) == BLACK) {
-                log!("{}, {}, {}, {}. Syntax error.", get_presence(source_piece) == EMPTY, get_color(source_piece) == BLACK, get_presence(target_piece) == EMPTY, get_color(target_piece) == BLACK);
+            if get_type(source_piece) == EMPTY || get_color(source_piece) == BLACK || !(get_type(target_piece) == EMPTY || get_color(target_piece) == BLACK) {
+                log!("{}, {}, {}, {}. Syntax error.", get_type(source_piece) == EMPTY, get_color(source_piece) == BLACK, get_type(target_piece) == EMPTY, get_color(target_piece) == BLACK);
                 *self.prompt.write().unwrap() = String::from("Invalid move. Enter move:");
                 input.reset();
                 return;
@@ -305,7 +305,7 @@ impl App {
                         let source_piece = next_move.0.get(7-from_rank, 7-from_file);
                         let target_piece = next_move.0.get(7-to_rank, 7-to_file);
                         // log!("Processing prompt: candidate:\n{}", next_move.inverted());
-                        if get_presence(source_piece) == EMPTY && get_presence(target_piece) == PRESENT && get_color(target_piece) == BLACK {
+                        if get_type(source_piece) == EMPTY && get_type(target_piece) != EMPTY && get_color(target_piece) == BLACK {
                             next_board = Some(next_move.0);
                             break;
                         }
@@ -408,7 +408,7 @@ impl App {
 
     fn run_engine(&self, thread_count: usize) {
         log!("Running engine");
-        self.positions_to_evaluate.queue(0, vec![PositionToEvaluate{ value: (None, INITIAL_BOARD) }]);
+        self.positions_to_evaluate.queue(0, vec![PositionToEvaluate{ value: (None, *INITIAL_BOARD) }]);
         log!("queued");
         let mut threads: Vec<JoinHandle<()>> = Vec::new();
         log!("Starting {} threads", thread_count);
