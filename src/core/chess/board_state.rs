@@ -77,7 +77,7 @@ impl Evaluation {
 
 pub struct BoardState {
 	pub self_evaluation: Evaluation,
-	pub next_moves: Box<[(Board, Option<TimestampedEvaluation>)]>,
+	pub next_moves: (usize, usize),
 
 	pub previous_moves: RwLock<HashSet<Board>>,
 
@@ -94,7 +94,7 @@ impl BoardState {
     pub fn new() -> Self {
         BoardState {
             self_evaluation: Evaluation{result: PositionResult::Draw, score: 0},
-            next_moves: Box::new([]),
+            next_moves: (0, 0),
 
             previous_moves: RwLock::new(HashSet::new()),
 

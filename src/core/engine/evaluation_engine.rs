@@ -2,7 +2,7 @@ use std::{collections::HashSet, sync::{Arc, RwLock, mpsc::Sender}, thread::sleep
 
 use chrono::{DateTime, Utc};
 
-use crate::{App, core::{chess::board::Board, engine::{reevaluation_engine::move_board, structs::PositionToEvaluate}, structs::map::Presence}, log};
+use crate::{App, core::{chess::board::{Board, can_come_after_board_arrangement}, engine::{reevaluation_engine::move_board, structs::{PositionToEvaluate, TimestampedEvaluation}}, structs::map::Presence}, log};
 pub static TIMED: RwLock<bool> = RwLock::new(false);
 
 pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App, eval_sender: Sender<(usize, Vec<PositionToEvaluate>)>) {
@@ -60,6 +60,9 @@ pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App, eval
         // if board_depth > 2 {
         //     continue;
         // }
+        let current_board_arrangement = {
+            app.current_board.read().unwrap().get_board_arrangement()
+        };
         let mut skippable_set: HashSet<Board> = HashSet::new();
         for position in positions_to_evaluate_list {
             let (previous_board, board) = position.value;
@@ -68,7 +71,7 @@ pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App, eval
                     continue;
                 }
                 // if let None = positions.get(&previous_board) {
-                if !positions.is_board_arrangement_present(&previous_board) {
+                if !can_come_after_board_arrangement(&current_board_arrangement, &previous_board.get_board_arrangement()) {
                     skippable_set.insert(previous_board);
                     continue;
                 }
@@ -83,12 +86,21 @@ pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App, eval
                         *positions_evaluated_length = *positions_evaluated_length + 1;
                     }
                     let evaluated_board_state = board.get_evaluation();
-    
+
                     let board_arrangement_positions = value.ptr.upgrade().unwrap();
+
+                    let next_moves = {
+                        let mut writable_board_arrangement_positions = board_arrangement_positions.write().unwrap();
+                        let next_moves: Vec<(Board, Option<TimestampedEvaluation>)> = evaluated_board_state.1.clone().iter().map(|board| (board.clone(), None)).collect();
+                        let next_moves_size = next_moves.len();
+                        let index = writable_board_arrangement_positions.set_next_moves(next_moves);
+                        (index, next_moves_size)
+                    };
+    
                     let readable_board_arrangement_positions = board_arrangement_positions.read().unwrap();
                     let mut writable_board_state = readable_board_arrangement_positions.get(value.index).write().unwrap();
                     writable_board_state.self_evaluation = evaluated_board_state.0;
-                    writable_board_state.next_moves = evaluated_board_state.1.clone().iter().map(|board| (board.clone(), None)).collect();
+                    writable_board_state.next_moves = next_moves;
                     match previous_board {
                         Some(previous_board) => {
                             {

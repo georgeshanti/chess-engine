@@ -298,14 +298,25 @@ impl App {
                     let board_arrangement_positions = pointer_to_board.ptr.upgrade().unwrap();
                     let readable_board_arrangement_positions = board_arrangement_positions.read().unwrap();
                     let board_state = readable_board_arrangement_positions.get(pointer_to_board.index).read().unwrap();
-    
+
                     let mut next_board: Option<Board> = None;
-                    for next_move in board_state.next_moves.iter() {
-                        let source_piece = next_move.0.get(7-from_rank, 7-from_file);
-                        let target_piece = next_move.0.get(7-to_rank, 7-to_file);
-                        // log!("Processing prompt: candidate:\n{}", next_move.inverted());
-                        if get_presence(source_piece) == EMPTY && get_presence(target_piece) == PRESENT && get_color(target_piece) == BLACK {
-                            next_board = Some(next_move.0);
+                    log!("board_state.next_moves: {:?}", board_state.next_moves);
+                    let next_moves = readable_board_arrangement_positions.get_next_moves(board_state.next_moves.0, board_state.next_moves.1, true);
+                    log!("next_moves: {}", next_moves.len());
+                    for next_moves in next_moves {
+                        log!("next_moves_len: {}", next_moves.len());
+                        let mut found = false;
+                        for next_move in next_moves {
+                            let source_piece = next_move.0.get(7-from_rank, 7-from_file);
+                            let target_piece = next_move.0.get(7-to_rank, 7-to_file);
+                            // log!("Processing prompt: candidate:\n{}", next_move.inverted());
+                            if get_presence(source_piece) == EMPTY && get_presence(target_piece) != EMPTY && get_color(target_piece) == BLACK {
+                                next_board = Some(next_move.0);
+                                found = true;
+                                break;
+                            }
+                        }
+                        if found {
                             break;
                         }
                     }

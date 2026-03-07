@@ -74,31 +74,40 @@ pub fn reevaluation_thread(positions_to_reevaluate: PositionsToReevaluate, posit
                     if let Some(board_arrangement_positions) = board_arrangement_positions {
                         let readable_board_arrangement_positions = board_arrangement_positions.read().unwrap();
                         let mut board_state = readable_board_arrangement_positions.get(pointer_to_board.index).write().unwrap();
-                        let next_moves = &mut board_state.next_moves;
+                        let next_moves = readable_board_arrangement_positions.get_next_moves(board_state.next_moves.0, board_state.next_moves.1, false);
 
                         let mut should_reevaluate = false;
-                        for i in 0..next_moves.len() {
-                            let next_position = next_moves[i];
-                            if next_position.0 == next_board {
-                                if (next_position.1.is_none() || next_position.1.unwrap().1 < next_board_new_evaluation_timestamp) {
-                                    next_moves[i].1 = Some((next_board_new_evaluation, next_board_new_evaluation_timestamp));
-                                    should_reevaluate = true;
+                        for next_moves in next_moves.clone() {
+                            for next_position in next_moves {
+                                if next_position.0 == next_board {
+                                    let next_position_evaluation = &next_position.1;
+                                    let mut next_position_evaluation = next_position_evaluation.write().unwrap();
+                                    if (next_position_evaluation.is_none() || next_position_evaluation.unwrap().1 < next_board_new_evaluation_timestamp) {
+                                        *next_position_evaluation = Some((next_board_new_evaluation, next_board_new_evaluation_timestamp));
+                                        should_reevaluate = true;
+                                    }
+                                    break;
                                 }
-                                break;
                             }
                         }
 
+                        if !should_reevaluate {
+                            continue;
+                        }
+
                         let mut best_move: Option<NextBestMove> = None;
-                        for next_move in next_moves.iter() {
-                            if let Some((next_position_evaluation, _)) = next_move.1 {
-                                let next_position_evaluation_inverted = next_position_evaluation.invert();
-                                match best_move {
-                                    None => {
-                                        best_move = Some(NextBestMove{board: next_move.0, evaluation: next_position_evaluation_inverted});
-                                    },
-                                    Some(present_best_move) => {
-                                        if next_position_evaluation_inverted.compare_to(&present_best_move.evaluation) == Ordering::Greater {
+                        for next_moves in next_moves {
+                            for next_move in next_moves {
+                                if let Some((next_position_evaluation, _)) = *next_move.1.read().unwrap() {
+                                    let next_position_evaluation_inverted = next_position_evaluation.invert();
+                                    match best_move {
+                                        None => {
                                             best_move = Some(NextBestMove{board: next_move.0, evaluation: next_position_evaluation_inverted});
+                                        },
+                                        Some(present_best_move) => {
+                                            if next_position_evaluation_inverted.compare_to(&present_best_move.evaluation) == Ordering::Greater {
+                                                best_move = Some(NextBestMove{board: next_move.0, evaluation: next_position_evaluation_inverted});
+                                            }
                                         }
                                     }
                                 }
