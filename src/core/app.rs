@@ -1,6 +1,5 @@
 use std::{sync::{Arc, Condvar, Mutex, RwLock, mpsc::{self, Receiver, Sender}}, thread::{JoinHandle, sleep}, time::{Duration, Instant}};
 
-use mac_notification_sys::{Notification, Sound, send_notification};
 use ratatui::{Frame, crossterm::event::{Event, KeyCode, poll, read}, layout::{Alignment, Constraint, Direction, Layout, Margin, Rect}, widgets::{Block, Borders, Paragraph}};
 use regex::Regex;
 use thousands::Separable;
@@ -396,13 +395,6 @@ impl App {
                 *(app.current_depth.write().unwrap()) = depth + 2;
                 self.waiter.notify();
             }
-            send_notification(
-                "NOW",
-                None,
-                "Without subtitle",
-                Some(Notification::new().sound(Sound::Default)),
-            )
-            .unwrap();
             drop(run_lock_lock);
     }
 
