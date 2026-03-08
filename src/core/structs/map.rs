@@ -1,6 +1,6 @@
 use std::{cmp, collections::{HashMap, HashSet}, hash::{DefaultHasher, Hash, Hasher, RandomState}, sync::{Arc, RwLock, Weak}};
 
-use crate::{core::{chess::{board::{Board, BoardArrangement}, board_state::BoardState}, engine::structs::TimestampedEvaluation, structs::cash::Cash}, log};
+use crate::{core::{chess::{board::{Board, BoardArrangement, BoardArray}, board_state::BoardState}, engine::structs::TimestampedEvaluation, structs::cash::Cash}, log};
 
 pub struct PointerToBoard {
     pub ptr: Weak<RwLock<BoardArrangementPositions>>,
@@ -128,7 +128,7 @@ impl BoardArrangementPositions {
         vec
     }
 
-    pub fn set_next_moves(self: &mut Self, next_moves: Vec<(Board, Option<TimestampedEvaluation>)>) -> usize {
+    pub fn set_next_moves(self: &mut Self, next_moves: &[(Board, Option<TimestampedEvaluation>)]) -> usize {
         let start_index = self.next_moves_size;
         let mut next_moves_index = 0;
         let mut moves_left_to_insert = next_moves.len();
@@ -146,8 +146,13 @@ impl BoardArrangementPositions {
             let moves_to_write = cmp::min(space_left, moves_left_to_insert);
             let page = self.next_moves.get_mut(page).unwrap();
             let page = page.as_mut().unwrap();
-            let mut subslice: Vec<(Board, RwLock<Option<(crate::core::chess::board_state::Evaluation, std::time::Instant)>>)> = next_moves[next_moves_index..(next_moves_index+moves_to_write)].iter().map(|t| (t.0, RwLock::new(t.1))).collect();
-            page.append(&mut subslice);
+            // let mut subslice = Vec::with_capacity(moves_to_write);
+            for i in 0..moves_to_write {
+                let next_move = next_moves[next_moves_index+i];
+                page.push((next_move.0, RwLock::new(next_move.1)));
+            }
+            // let subslice: Box<[(Board, RwLock<Option<(crate::core::chess::board_state::Evaluation, std::time::Instant)>>)]> = next_moves[next_moves_index..(next_moves_index+moves_to_write)].iter().map(|t| (t.0, RwLock::new(t.1))).collect();
+            // page.append(&mut subslice);
 
             next_moves_index += moves_to_write;
             moves_left_to_insert -= moves_to_write;

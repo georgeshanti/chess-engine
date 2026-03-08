@@ -6,7 +6,7 @@ pub fn prune_engine(app: App, receiver: Receiver<Board>, sender: Sender<()>) {
 
     let mut handles = vec![];
     let mut wakers: Vec<(Sender<Board>, Receiver<()>)> = vec![];
-    for i in 0..app.thread_count {
+    for i in 0..app.computer_count {
         let map = app.positions.map[i].clone().unwrap();
         let (self_tx, self_rx) = mpsc::channel();
         let (thread_tx, thread_rx) = mpsc::channel();

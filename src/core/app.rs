@@ -11,13 +11,14 @@ use serde_json;
 
 #[derive(Clone)]
 pub struct App {
+    pub computer_count: usize,
+    pub queuer_count: usize,
     pub current_board: Arc<RwLock<Board>>,
     pub positions: GroupedPositions,
     pub positions_to_evaluate: PositionsToEvaluate,
     pub positions_to_reevaluate: PositionsToReevaluate,
     pub run_lock: Arc<RwLock<()>>,
     pub thread_stats: Vec<ThreadStat>,
-    pub thread_count: usize,
     pub positions_evaluated_acount: Arc<RwLock<usize>>,
     pub frame_count: usize,
     pub input: Arc<RwLock<Input>>,
@@ -31,17 +32,18 @@ pub struct App {
 
 impl App {
 
-    pub fn new(thread_count: usize) -> App {
+    pub fn new(computer_count: usize, queuer_count: usize) -> App {
         let depth = Arc::new(RwLock::new(5));
         let waiter = LockWaiter::new();
         let mut app = App {
-            positions: GroupedPositions::new(thread_count),
-            positions_to_evaluate: DistributedWeightedQueue::new(thread_count, depth.clone(), waiter.clone()),
-            positions_to_reevaluate: DistributedQueue::new(thread_count),
+            positions: GroupedPositions::new(computer_count),
+            positions_to_evaluate: DistributedWeightedQueue::new(computer_count, depth.clone(), waiter.clone()),
+            positions_to_reevaluate: DistributedQueue::new(computer_count),
             run_lock:  Arc::new(RwLock::new(())),
             current_board: Arc::new(RwLock::new(INITIAL_BOARD)),
-            thread_stats: Vec::with_capacity(thread_count),
-            thread_count: thread_count,
+            thread_stats: Vec::with_capacity(computer_count),
+            computer_count: computer_count,
+            queuer_count: queuer_count,
             positions_evaluated_acount: Arc::new(RwLock::new(0)),
             frame_count: 0,
             input: Arc::new(RwLock::new(Input::new(String::from("")))),
@@ -53,7 +55,7 @@ impl App {
             waiter: waiter,
         };
     
-        for _ in 0..thread_count {
+        for _ in 0..computer_count {
             app.thread_stats.push(ThreadStat::new());
         }
         return app;
@@ -415,18 +417,22 @@ impl App {
         log!("queued");
         let mut threads: Vec<JoinHandle<()>> = Vec::new();
         log!("Starting {} threads", thread_count);
-        let (eval_sender, eval_receiver) = mpsc::channel::<(usize, Vec<PositionToEvaluate>)>();
-        let q = self.positions_to_evaluate.clone();
-        std::thread::Builder::new().name(String::from("eval_queuer")).spawn(move || {
-            loop {
-                let value = eval_receiver.recv().unwrap();
-                q.queue(value.0, value.1);
-            }
-        }).unwrap();
+        let mut eval_senders: Vec<Sender<(usize, Vec<PositionToEvaluate>)>> = Vec::with_capacity(self.queuer_count);
+        for i in 0..self.queuer_count {
+            let (eval_sender, eval_receiver) = mpsc::channel::<(usize, Vec<PositionToEvaluate>)>();
+            let q = self.positions_to_evaluate.clone();
+            std::thread::Builder::new().name(String::from("eval_queuer_0")).spawn(move || {
+                loop {
+                    let value = eval_receiver.recv().unwrap();
+                    q.queue(value.0, value.1);
+                }
+            }).unwrap();
+            eval_senders.push(eval_sender);
+        }
         for i  in 0..self.thread_stats.len() {
             let app = self.clone();
             let run_lock = self.run_lock.clone();
-            let eval_sender = eval_sender.clone();
+            let eval_sender = eval_senders[i % self.queuer_count].clone();
             let join_handle = std::thread::Builder::new().name(format!("evaluation_engine_{}", i)).spawn(move || {
                 evaluation_engine(i, run_lock, app, eval_sender.clone());
             }).unwrap();

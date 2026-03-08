@@ -10,7 +10,7 @@ pub fn reevaluation_engine(app: App, receiver: Receiver<()>, sender: Sender<()>)
     let mut handles = vec![];
     let mut wakers: Vec<(Sender<()>, Receiver<()>)> = vec![];
     let app= app.clone();
-    for i in 0..app.thread_count {
+    for i in 0..app.computer_count {
         let positions_to_reevaluate = app.positions_to_reevaluate.clone();
         let positions = app.positions.clone();
         let (self_tx, self_rx) = mpsc::channel();

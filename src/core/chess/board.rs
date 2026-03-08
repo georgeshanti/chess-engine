@@ -31,6 +31,34 @@ const BISHOP_DIRECTIONS: [(i8, i8); 4] = [(1, 1), (-1, 1), (1, -1), (-1, -1)];
 const QUEEN_DIRECTIONS: [(i8, i8); 8] = [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (-1, 1), (1, -1), (-1, -1)];
 const PAWN_DIAGONALS: [(i8, i8); 2] = [(1, 1), (1, -1)];
 
+pub struct BoardArray<T>{
+    array: [T; 323],
+    size: usize,
+}
+
+impl<T: Copy> BoardArray<T> {
+    pub fn new(empty_val: T) -> Self {
+        BoardArray { array: [empty_val; 323], size: 0 }
+    }
+
+    pub fn push(self: &mut Self, value: T) {
+        self.array[self.size] = value;
+        self.size += 1;
+    }
+
+    pub fn to_slice(self: &Self) -> &[T] {
+        &self.array[0..self.size]
+    }
+
+    pub fn to_slice_mut(self: &mut Self) -> &mut [T] {
+        &mut self.array[0..self.size]
+    }
+
+    pub fn len(self: &Self) -> usize {
+        self.size
+    }
+}
+
 trait Coordinates<T> {
     fn multiply(self: &Self, multiplier: i8) -> Self;
     fn add(self: &Self, other: Self) -> Self;
@@ -92,18 +120,11 @@ impl Board {
     }
 
     #[inline(never)]
-    pub fn find_moves(self: &Self) -> Vec<Board> {
+    pub fn find_moves(self: &Self) -> BoardArray<Board> {
         let presence_board = Board {pieces: and_byte(self.pieces, PRESENCE_BITS)};
         let color_board = Board {pieces: and_byte(self.pieces, COLOR_BITS)};
         let type_board = Board {pieces: and_byte(self.pieces, TYPE_BITS)};
-        let mut vec_length: usize = 0;
-        for i in 0..64 {
-            if presence_board.pieces[i] == EMPTY || color_board.pieces[i] == BLACK {
-                continue;
-            }
-            vec_length +=  get_max_movement(type_board.pieces[i]);
-        }
-        let mut moves = Vec::with_capacity(vec_length);
+        let mut moves = BoardArray::new(Board::new());
         for i in 0..64 {
             if presence_board.pieces[i] == EMPTY || color_board.pieces[i] == BLACK {
                 continue;
@@ -201,13 +222,12 @@ impl Board {
                 _ => panic!("Invalid piece type"),
             }
         }
-        moves.iter_mut().for_each(|board| {
+        moves.to_slice_mut().iter_mut().for_each(|board| {
             let mut new_board = board.clone();
             new_board = new_board.inverted();
             new_board.normalize_opponent_pieces();
             *board = new_board
         });
-        moves.shrink_to_fit();
         moves
     }
 
@@ -257,22 +277,22 @@ impl Board {
         return false;
     }
 
-    pub fn get_evaluation(self: &Self) -> (Evaluation, Box<[Board]>) {
+    pub fn get_evaluation(self: &Self) -> (Evaluation, BoardArray<Board>) {
         let moves = self.find_moves();
-        let mut legal_moves: Vec<Board> = vec![];
-        for board in moves.iter() {
+        let mut legal_moves = BoardArray::new(Board::new());
+        for board in moves.to_slice().iter() {
             if !board.is_opponent_in_check() {
                 legal_moves.push(*board);
             }
         }
-        if legal_moves.len() == 0 {
+        if legal_moves.size == 0 {
             let inverted_board = self.inverted();
             if inverted_board.is_opponent_in_check() {
                 return (Evaluation{
                         result: PositionResult::Loss,
                         score: 0,
                     },
-                    Box::new([]),
+                    BoardArray::new(Board::new()),
                 );
             } else {
                 return (
@@ -280,7 +300,7 @@ impl Board {
                         result: PositionResult::Draw,
                         score: 0,
                     },
-                    Box::new([]),
+                    BoardArray::new(Board::new()),
                 );
             }
         }
@@ -302,7 +322,7 @@ impl Board {
                 result: PositionResult::Scored,
                 score: material as i32,
             },
-            legal_moves.into_boxed_slice(),
+            legal_moves,
         );
     }
 

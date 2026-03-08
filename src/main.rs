@@ -1,5 +1,7 @@
 mod core;
 
+use std::os::unix::thread;
+
 use crate::core::{app::App, chess::board::{Board, BoardArrangement}, engine::reevaluation_engine::{move_board, move_board_arrangement}, log::FILENAME};
 
 fn main() {
@@ -39,7 +41,9 @@ fn main() {
     log!("Hello, world!");
     let thread_count = std::thread::available_parallelism().unwrap().get();
     // let thread_count = 6;
-    let mut app = App::new(thread_count-1);
+    let computer_count = 6;
+    let queuer_count = 1;
+    let mut app = App::new(12, 4);
 
     let _ = app.run();
     ratatui::restore();

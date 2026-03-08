@@ -2,7 +2,7 @@ use std::{collections::HashSet, sync::{Arc, RwLock, mpsc::Sender}, thread::sleep
 
 use chrono::{DateTime, Utc};
 
-use crate::{App, core::{chess::board::{Board, can_come_after_board_arrangement}, engine::{reevaluation_engine::move_board, structs::{PositionToEvaluate, TimestampedEvaluation}}, structs::map::Presence}, log};
+use crate::{App, core::{chess::board::{Board, BoardArray, can_come_after_board_arrangement}, engine::{reevaluation_engine::move_board, structs::{PositionToEvaluate, TimestampedEvaluation}}, structs::map::Presence}, log};
 pub static TIMED: RwLock<bool> = RwLock::new(false);
 
 pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App, eval_sender: Sender<(usize, Vec<PositionToEvaluate>)>) {
@@ -61,8 +61,8 @@ pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App, eval
         //     continue;
         // }
         let current_board_arrangement = {
-            app.current_board.read().unwrap().get_board_arrangement()
-        };
+            app.current_board.read().unwrap()
+        }.get_board_arrangement();
         let mut skippable_set: HashSet<Board> = HashSet::new();
         for position in positions_to_evaluate_list {
             let (previous_board, board) = position.value;
@@ -91,9 +91,12 @@ pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App, eval
 
                     let next_moves = {
                         let mut writable_board_arrangement_positions = board_arrangement_positions.write().unwrap();
-                        let next_moves: Vec<(Board, Option<TimestampedEvaluation>)> = evaluated_board_state.1.clone().iter().map(|board| (board.clone(), None)).collect();
+                        let mut next_moves: BoardArray<(Board, Option<TimestampedEvaluation>)> = BoardArray::new((Board::new(), None));
+                        for board in evaluated_board_state.1.to_slice() {
+                            next_moves.push((*board, None));
+                        }
                         let next_moves_size = next_moves.len();
-                        let index = writable_board_arrangement_positions.set_next_moves(next_moves);
+                        let index = writable_board_arrangement_positions.set_next_moves(next_moves.to_slice());
                         (index, next_moves_size)
                     };
     
@@ -115,8 +118,8 @@ pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App, eval
                     drop(writable_board_state);
     
                     let mut next_boards: Vec<PositionToEvaluate> = Vec::with_capacity(evaluated_board_state.1.len());
-                    for next_board in evaluated_board_state.1 {
-                        next_boards.push(PositionToEvaluate{ value: (Some(board), next_board) });
+                    for next_board in evaluated_board_state.1.to_slice() {
+                        next_boards.push(PositionToEvaluate{ value: (Some(board), *next_board) });
                     }
                     // positions_to_evaluate.queue(board_depth+1, next_boards);
                     eval_sender.send((board_depth+1, next_boards)).unwrap();
