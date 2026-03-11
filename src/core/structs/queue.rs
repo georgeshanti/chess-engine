@@ -24,14 +24,16 @@ impl<T: Clone + Cash> DistributedQueue<T> {
     pub fn queue(&self, value: Vec<T>) {
         let mut vectors: Vec<Vec<T>> = Vec::with_capacity(self.size);
         for _ in 0..self.size {
-            vectors.push(Vec::with_capacity(self.size));
+            vectors.push(Vec::with_capacity(value.len()));
         }
         for val in value {
             let index = (val.cash() % self.size as u64) as usize;
             vectors[index].push(val);
         }
-        for i in 0..vectors.len() {
-            self.queues[i].queue(vectors[i].clone());
+        let len = vectors.len();
+        for i in 0..len {
+            let vec = vectors.pop().unwrap();
+            self.queues[len-i-1].queue(vec);
         }
         // let current_node = {
         //     let mut current_node = self.current_node.lock().unwrap();

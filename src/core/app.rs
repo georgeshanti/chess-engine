@@ -5,7 +5,7 @@ use regex::Regex;
 use thousands::Separable;
 use tui_input::{Input, backend::crossterm::EventHandler};
 
-use crate::{core::{chess::{board::Board, initial_board::INITIAL_BOARD, piece::{BLACK, EMPTY, PRESENT, get_color, get_presence}}, engine::{evaluation_engine::evaluation_engine, prune_engine::prune_engine, reevaluation_engine::reevaluation_engine, structs::{PositionToEvaluate, PositionsToEvaluate, PositionsToReevaluate}}, structs::{lock::LockWaiter, map::{GroupedPositions, Positions}, queue::DistributedQueue, weighted_queue::DistributedWeightedQueue}}, log};
+use crate::{core::{chess::{board::{Board}, initial_board::INITIAL_BOARD, piece::{BLACK, EMPTY, get_color, get_presence}}, engine::{evaluation_engine::evaluation_engine, prune_engine::prune_engine, reevaluation_engine::reevaluation_engine, structs::{PositionToEvaluate, PositionsToEvaluate, PositionsToReevaluate}}, structs::{lock::LockWaiter, map::{GroupedPositions, Positions}, queue::DistributedQueue, weighted_queue::DistributedWeightedQueue}}, log};
 
 use serde_json;
 
@@ -421,10 +421,11 @@ impl App {
         for i in 0..self.queuer_count {
             let (eval_sender, eval_receiver) = mpsc::channel::<(usize, Vec<PositionToEvaluate>)>();
             let q = self.positions_to_evaluate.clone();
-            std::thread::Builder::new().name(String::from("eval_queuer_0")).spawn(move || {
+            std::thread::Builder::new().name(format!("eval_queuer_{}", i)).spawn(move || {
                 loop {
                     let value = eval_receiver.recv().unwrap();
-                    q.queue(value.0, value.1);
+                    let vec = value.1;
+                    q.queue(value.0, vec);
                 }
             }).unwrap();
             eval_senders.push(eval_sender);
