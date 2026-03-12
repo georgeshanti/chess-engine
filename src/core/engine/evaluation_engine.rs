@@ -91,7 +91,7 @@ pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App, eval
 
                     let next_moves = {
                         let mut writable_board_arrangement_positions = board_arrangement_positions.write().unwrap();
-                        let mut next_moves: BoardArray<(Board, Option<TimestampedEvaluation>)> = BoardArray::new((Board::new(), None));
+                        let mut next_moves: BoardArray<(Board, Option<TimestampedEvaluation>), 323> = BoardArray::new((Board::new(), None));
                         for board in evaluated_board_state.1.to_slice() {
                             next_moves.push((*board, None));
                         }

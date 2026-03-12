@@ -31,14 +31,14 @@ const BISHOP_DIRECTIONS: [(i8, i8); 4] = [(1, 1), (-1, 1), (1, -1), (-1, -1)];
 const QUEEN_DIRECTIONS: [(i8, i8); 8] = [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (-1, 1), (1, -1), (-1, -1)];
 const PAWN_DIAGONALS: [(i8, i8); 2] = [(1, 1), (1, -1)];
 
-pub struct BoardArray<T>{
-    array: [T; 323],
+pub struct BoardArray<T, const N: usize>{
+    array: [T; N],
     size: usize,
 }
 
-impl<T: Copy> BoardArray<T> {
+impl<T: Copy, const N: usize> BoardArray<T, N> {
     pub fn new(empty_val: T) -> Self {
-        BoardArray { array: [empty_val; 323], size: 0 }
+        BoardArray { array: [empty_val; N], size: 0 }
     }
 
     pub fn push(self: &mut Self, value: T) {
@@ -120,7 +120,7 @@ impl Board {
     }
 
     #[inline(never)]
-    pub fn find_moves(self: &Self) -> BoardArray<Board> {
+    pub fn find_moves(self: &Self) -> BoardArray<Board, 323> {
         let presence_board = Board {pieces: and_byte(self.pieces, PRESENCE_BITS)};
         let color_board = Board {pieces: and_byte(self.pieces, COLOR_BITS)};
         let type_board = Board {pieces: and_byte(self.pieces, TYPE_BITS)};
@@ -277,7 +277,7 @@ impl Board {
         return false;
     }
 
-    pub fn get_evaluation(self: &Self) -> (Evaluation, BoardArray<Board>) {
+    pub fn get_evaluation(self: &Self) -> (Evaluation, BoardArray<Board, 323>) {
         let moves = self.find_moves();
         let mut legal_moves = BoardArray::new(Board::new());
         for board in moves.to_slice().iter() {
