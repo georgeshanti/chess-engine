@@ -5,12 +5,12 @@ use crate::{core::structs::{cash::Cash, lock::LockWaiter, queue::Queue, threaded
 #[derive(Clone)]
 pub struct WeightedQueue<T> {
     pub thread_count: usize,
-    pub queues: Arc<RwLock<BTreeMap<usize, ThreadedQueue<T>>>>,
+    pub queues: Arc<RwLock<BTreeMap<usize, Queue<T>>>>,
     waiter: LockWaiter,
     max: Arc<RwLock<usize>>,
 }
 
-impl<T: Clone> WeightedQueue<T> {
+impl<T: Copy> WeightedQueue<T> {
     pub fn new(thread_count: usize, max: Arc<RwLock<usize>>, waiter: LockWaiter) -> Self {
         WeightedQueue {
             thread_count,
@@ -30,7 +30,7 @@ impl<T: Clone> WeightedQueue<T> {
                 None => {
                     drop(readable_queues);
                     let mut writable_queues = self.queues.write().unwrap();
-                    let queue = ThreadedQueue::new(self.thread_count);
+                    let queue = Queue::new(1024);
                     writable_queues.insert(weight, queue.clone());
                     self.waiter.notify();
                     queue
@@ -94,7 +94,7 @@ pub struct DistributedWeightedQueue<T: Clone + Cash> {
     pub queues: Vec<WeightedQueue<T>>,
 }
 
-impl<T: Clone + Cash> DistributedWeightedQueue<T> {
+impl<T: Copy + Cash> DistributedWeightedQueue<T> {
     pub fn new(size: usize, max: Arc<RwLock<usize>>, waiter: LockWaiter) -> Self {
         DistributedWeightedQueue {
             size,

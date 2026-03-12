@@ -11,7 +11,7 @@ pub struct ThreadedQueue<T> {
     pub queues: Arc<RwLock<Vec<Queue<T>>>>,
 }
 
-impl<T: Clone> ThreadedQueue<T> {
+impl<T: Copy> ThreadedQueue<T> {
     pub fn new(thread_count: usize) -> Self {
         let threaded_queue = ThreadedQueue {
             length: Arc::new(RwLock::new(0)),
@@ -21,7 +21,7 @@ impl<T: Clone> ThreadedQueue<T> {
             queues: Arc::new(RwLock::new(Vec::with_capacity(thread_count))),
         };
         for _ in 0..thread_count {
-            threaded_queue.queues.write().unwrap().push(Queue::new());
+            threaded_queue.queues.write().unwrap().push(Queue::new(1024));
         }
         return threaded_queue;
     }
@@ -31,6 +31,9 @@ impl<T: Clone> ThreadedQueue<T> {
     }
 
     pub fn queue(&self, value: Vec<T>) {
+        if value.is_empty() {
+            return;
+        }
         let queue_index = (self.incrment_queue_index() % self.thread_count as u64) as usize;
         let len = value.len();
         // log!("Queueing into index: {:?}, vec size: {:?}", queue_index, value.len());
