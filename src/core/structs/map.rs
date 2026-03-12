@@ -61,7 +61,7 @@ pub struct Positions {
     >>>
 }
 
-pub const PAGE_SIZE: usize = 4096 * 1024;
+pub const PAGE_SIZE: usize = 4096 * 100;
 pub const PAGE_BOARD_STATE_COUNT: usize = PAGE_SIZE / size_of::<RwLock<BoardState>>();
 
 // pub const PAGE_BOARD_COUNT: usize = PAGE_SIZE / size_of::<RwLock<BoardState>>();

@@ -420,9 +420,9 @@ impl App {
         log!("queued");
         let mut threads: Vec<JoinHandle<()>> = Vec::new();
         log!("Starting {} threads", thread_count);
-        let mut eval_senders: Vec<Sender<(usize, ArrayBuilder<PositionToEvaluate, 20>)>> = Vec::with_capacity(self.queuer_count);
+        let mut eval_senders: Vec<Sender<(usize, ArrayBuilder<PositionToEvaluate, 40>)>> = Vec::with_capacity(self.queuer_count);
         for i in 0..self.queuer_count {
-            let (eval_sender, eval_receiver) = mpsc::channel::<(usize, ArrayBuilder<PositionToEvaluate, 20>)>();
+            let (eval_sender, eval_receiver) = mpsc::channel::<(usize, ArrayBuilder<PositionToEvaluate, 40>)>();
             let q = self.positions_to_evaluate.clone();
             std::thread::Builder::new().name(format!("eval_queuer_{}", i)).spawn(move || {
                 loop {

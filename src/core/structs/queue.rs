@@ -190,9 +190,7 @@ impl<T: Copy> Queue<T> {
                         // log!("Queue: Space left: {}", space_left);
                         let moves_to_write = cmp::min(space_left, moves_left_to_write);
                         // log!("Queue: Moves to write: {}", moves_to_write);
-                        for i in 0..moves_to_write {
-                            page.array.push(value[index_to_read_from+i]);
-                        }
+                        page.array.extend_from_slice(&value[index_to_read_from..index_to_read_from+moves_to_write]);
                         index_to_read_from += moves_to_write;
                         moves_left_to_write -= moves_to_write;
                     }
