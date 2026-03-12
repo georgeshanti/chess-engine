@@ -43,7 +43,7 @@ fn main() {
     // let thread_count = 6;
     let computer_count = 6;
     let queuer_count = 1;
-    let mut app = App::new(8, 2);
+    let mut app = App::new(14, 2);
 
     let _ = app.run();
     ratatui::restore();

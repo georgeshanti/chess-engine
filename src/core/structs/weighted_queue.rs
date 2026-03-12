@@ -102,7 +102,7 @@ impl<T: Copy + Cash> DistributedWeightedQueue<T> {
         }
     }
 
-    pub fn queue(&self, weight: usize, value: Vec<T>) {
+    pub fn queue(&self, weight: usize, value: &[T]) {
         let mut size_vectors: Vec<usize> = Vec::with_capacity(self.size);
         let mut index_vectors: Vec<usize> = Vec::with_capacity(value.len());
         for _ in 0..self.size {

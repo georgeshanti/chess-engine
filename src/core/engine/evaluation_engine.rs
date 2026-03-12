@@ -1,11 +1,12 @@
 use std::{collections::HashSet, sync::{Arc, RwLock, mpsc::Sender}, thread::sleep, time::{Duration, Instant}};
 
 use chrono::{DateTime, Utc};
+use ratatui::layout::Position;
 
 use crate::{App, core::{chess::board::{Board, BoardArray, can_come_after_board_arrangement}, engine::{reevaluation_engine::move_board, structs::{PositionToEvaluate, TimestampedEvaluation}}, structs::map::Presence}, log};
 pub static TIMED: RwLock<bool> = RwLock::new(false);
 
-pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App, eval_sender: Sender<(usize, Vec<PositionToEvaluate>)>) {
+pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App, eval_sender: Sender<(usize, BoardArray<PositionToEvaluate, 20>)>) {
     let timed: bool = *TIMED.read().unwrap();
     // while time elapsed is less than 10 seconds
     log!("Evaluation engine started");
@@ -116,13 +117,19 @@ pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App, eval
                         _ => {}
                     };
                     drop(writable_board_state);
-    
-                    let mut next_boards: Vec<PositionToEvaluate> = Vec::with_capacity(evaluated_board_state.1.len());
-                    for next_board in evaluated_board_state.1.to_slice() {
-                        next_boards.push(PositionToEvaluate{ value: (Some(board), *next_board) });
+
+                    let next_moves = evaluated_board_state.1.to_slice();
+                    let mut ba_to_send: BoardArray<PositionToEvaluate, 20> = BoardArray::new(PositionToEvaluate { value: (None, Board::new())});
+                    for i in 0..next_moves.len() {
+                        ba_to_send.push(PositionToEvaluate{ value: (Some(board), next_moves[i]) });
+                        if ba_to_send.len()==20 {
+                            eval_sender.send((board_depth+1, ba_to_send));
+                            ba_to_send = BoardArray::new(PositionToEvaluate { value: (None, Board::new())});
+                        }
                     }
-                    // positions_to_evaluate.queue(board_depth+1, next_boards);
-                    eval_sender.send((board_depth+1, next_boards)).unwrap();
+                    if ba_to_send.len() > 0 {
+                        eval_sender.send((board_depth+1, ba_to_send)).unwrap();
+                    }
                 },
                 Presence::Present { value } => {
                     if let Some(previous_board) = previous_board {

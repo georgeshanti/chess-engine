@@ -5,7 +5,7 @@ use regex::Regex;
 use thousands::Separable;
 use tui_input::{Input, backend::crossterm::EventHandler};
 
-use crate::{core::{chess::{board::{Board}, initial_board::INITIAL_BOARD, piece::{BLACK, EMPTY, get_color, get_presence}}, engine::{evaluation_engine::evaluation_engine, prune_engine::prune_engine, reevaluation_engine::reevaluation_engine, structs::{PositionToEvaluate, PositionsToEvaluate, PositionsToReevaluate}}, structs::{lock::LockWaiter, map::{GroupedPositions, Positions}, queue::DistributedQueue, weighted_queue::DistributedWeightedQueue}}, log};
+use crate::{core::{chess::{board::{Board, BoardArray}, initial_board::INITIAL_BOARD, piece::{BLACK, EMPTY, get_color, get_presence}}, engine::{evaluation_engine::evaluation_engine, prune_engine::prune_engine, reevaluation_engine::reevaluation_engine, structs::{PositionToEvaluate, PositionsToEvaluate, PositionsToReevaluate}}, structs::{lock::LockWaiter, map::{GroupedPositions, Positions}, queue::DistributedQueue, weighted_queue::DistributedWeightedQueue}}, log};
 
 use serde_json;
 
@@ -413,19 +413,21 @@ impl App {
 
     fn run_engine(&self, thread_count: usize) {
         log!("Running engine");
-        self.positions_to_evaluate.queue(0, vec![PositionToEvaluate{ value: (None, INITIAL_BOARD) }]);
+        let mut ba: BoardArray<PositionToEvaluate, 1> = BoardArray::new(PositionToEvaluate { value: (None, Board::new())});
+        ba.push(PositionToEvaluate{ value: (None, INITIAL_BOARD) });
+        self.positions_to_evaluate.queue(0, ba.to_slice());
         log!("queued");
         let mut threads: Vec<JoinHandle<()>> = Vec::new();
         log!("Starting {} threads", thread_count);
-        let mut eval_senders: Vec<Sender<(usize, Vec<PositionToEvaluate>)>> = Vec::with_capacity(self.queuer_count);
+        let mut eval_senders: Vec<Sender<(usize, BoardArray<PositionToEvaluate, 20>)>> = Vec::with_capacity(self.queuer_count);
         for i in 0..self.queuer_count {
-            let (eval_sender, eval_receiver) = mpsc::channel::<(usize, Vec<PositionToEvaluate>)>();
+            let (eval_sender, eval_receiver) = mpsc::channel::<(usize, BoardArray<PositionToEvaluate, 20>)>();
             let q = self.positions_to_evaluate.clone();
             std::thread::Builder::new().name(format!("eval_queuer_{}", i)).spawn(move || {
                 loop {
                     let value = eval_receiver.recv().unwrap();
                     let vec = value.1;
-                    q.queue(value.0, vec);
+                    q.queue(value.0, vec.to_slice());
                 }
             }).unwrap();
             eval_senders.push(eval_sender);
