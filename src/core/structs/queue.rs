@@ -75,7 +75,6 @@ impl<T: Copy + Cash> DistributedQueue<T> {
     }
 }
 
-#[derive(Clone)]
 pub struct QueuePage<T> {
     pub array: Vec<T>,
     pub next_page_index: Option<usize>,

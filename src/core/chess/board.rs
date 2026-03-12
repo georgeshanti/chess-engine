@@ -8,6 +8,7 @@ use crate::core::chess::piece::*;
 use crate::core::chess::board_state::*;
 use crate::core::structs::cash::Cash;
 use crate::log;
+use array_builder::ArrayBuilder;
 use serde::{Serialize, Deserialize};
 use serde_big_array::BigArray;
 
@@ -30,34 +31,6 @@ const KNIGHT_DIRECTIONS: [(i8, i8); 8] = [(2, 1), (2, -1), (-2, 1), (-2, -1), (1
 const BISHOP_DIRECTIONS: [(i8, i8); 4] = [(1, 1), (-1, 1), (1, -1), (-1, -1)];
 const QUEEN_DIRECTIONS: [(i8, i8); 8] = [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (-1, 1), (1, -1), (-1, -1)];
 const PAWN_DIAGONALS: [(i8, i8); 2] = [(1, 1), (1, -1)];
-
-pub struct BoardArray<T, const N: usize>{
-    array: [T; N],
-    size: usize,
-}
-
-impl<T: Copy, const N: usize> BoardArray<T, N> {
-    pub fn new(empty_val: T) -> Self {
-        BoardArray { array: [empty_val; N], size: 0 }
-    }
-
-    pub fn push(self: &mut Self, value: T) {
-        self.array[self.size] = value;
-        self.size += 1;
-    }
-
-    pub fn to_slice(self: &Self) -> &[T] {
-        &self.array[0..self.size]
-    }
-
-    pub fn to_slice_mut(self: &mut Self) -> &mut [T] {
-        &mut self.array[0..self.size]
-    }
-
-    pub fn len(self: &Self) -> usize {
-        self.size
-    }
-}
 
 trait Coordinates<T> {
     fn multiply(self: &Self, multiplier: i8) -> Self;
@@ -120,11 +93,11 @@ impl Board {
     }
 
     #[inline(never)]
-    pub fn find_moves(self: &Self) -> BoardArray<Board, 323> {
+    pub fn find_moves(self: &Self) -> ArrayBuilder<Board, 323> {
         let presence_board = Board {pieces: and_byte(self.pieces, PRESENCE_BITS)};
         let color_board = Board {pieces: and_byte(self.pieces, COLOR_BITS)};
         let type_board = Board {pieces: and_byte(self.pieces, TYPE_BITS)};
-        let mut moves = BoardArray::new(Board::new());
+        let mut moves = ArrayBuilder::new();
         for i in 0..64 {
             if presence_board.pieces[i] == EMPTY || color_board.pieces[i] == BLACK {
                 continue;
@@ -222,7 +195,7 @@ impl Board {
                 _ => panic!("Invalid piece type"),
             }
         }
-        moves.to_slice_mut().iter_mut().for_each(|board| {
+        moves.iter_mut().for_each(|board| {
             let mut new_board = board.clone();
             new_board = new_board.inverted();
             new_board.normalize_opponent_pieces();
@@ -277,22 +250,22 @@ impl Board {
         return false;
     }
 
-    pub fn get_evaluation(self: &Self) -> (Evaluation, BoardArray<Board, 323>) {
+    pub fn get_evaluation(self: &Self) -> (Evaluation, ArrayBuilder<Board, 323>) {
         let moves = self.find_moves();
-        let mut legal_moves = BoardArray::new(Board::new());
-        for board in moves.to_slice().iter() {
+        let mut legal_moves = ArrayBuilder::new();
+        for board in moves.iter() {
             if !board.is_opponent_in_check() {
                 legal_moves.push(*board);
             }
         }
-        if legal_moves.size == 0 {
+        if legal_moves.len() == 0 {
             let inverted_board = self.inverted();
             if inverted_board.is_opponent_in_check() {
                 return (Evaluation{
                         result: PositionResult::Loss,
                         score: 0,
                     },
-                    BoardArray::new(Board::new()),
+                    ArrayBuilder::new(),
                 );
             } else {
                 return (
@@ -300,7 +273,7 @@ impl Board {
                         result: PositionResult::Draw,
                         score: 0,
                     },
-                    BoardArray::new(Board::new()),
+                    ArrayBuilder::new(),
                 );
             }
         }

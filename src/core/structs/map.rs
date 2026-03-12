@@ -1,6 +1,6 @@
 use std::{cmp, collections::{HashMap, HashSet}, hash::{DefaultHasher, Hash, Hasher, RandomState}, sync::{Arc, RwLock, Weak}};
 
-use crate::{core::{chess::{board::{Board, BoardArrangement, BoardArray}, board_state::BoardState}, engine::structs::TimestampedEvaluation, structs::cash::Cash}, log};
+use crate::{core::{chess::{board::{Board, BoardArrangement}, board_state::BoardState}, engine::structs::TimestampedEvaluation, structs::cash::Cash}, log};
 
 pub struct PointerToBoard {
     pub ptr: Weak<RwLock<BoardArrangementPositions>>,

@@ -1,12 +1,13 @@
 use std::{collections::HashSet, sync::{Arc, RwLock, mpsc::Sender}, thread::sleep, time::{Duration, Instant}};
 
+use array_builder::ArrayBuilder;
 use chrono::{DateTime, Utc};
 use ratatui::layout::Position;
 
-use crate::{App, core::{chess::board::{Board, BoardArray, can_come_after_board_arrangement}, engine::{reevaluation_engine::move_board, structs::{PositionToEvaluate, TimestampedEvaluation}}, structs::map::Presence}, log};
+use crate::{App, core::{chess::board::{Board, can_come_after_board_arrangement}, engine::{reevaluation_engine::move_board, structs::{PositionToEvaluate, TimestampedEvaluation}}, structs::map::Presence}, log};
 pub static TIMED: RwLock<bool> = RwLock::new(false);
 
-pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App, eval_sender: Sender<(usize, BoardArray<PositionToEvaluate, 20>)>) {
+pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App, eval_sender: Sender<(usize, ArrayBuilder<PositionToEvaluate, 20>)>) {
     let timed: bool = *TIMED.read().unwrap();
     // while time elapsed is less than 10 seconds
     log!("Evaluation engine started");
@@ -92,12 +93,12 @@ pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App, eval
 
                     let next_moves = {
                         let mut writable_board_arrangement_positions = board_arrangement_positions.write().unwrap();
-                        let mut next_moves: BoardArray<(Board, Option<TimestampedEvaluation>), 323> = BoardArray::new((Board::new(), None));
-                        for board in evaluated_board_state.1.to_slice() {
+                        let mut next_moves: ArrayBuilder<(Board, Option<TimestampedEvaluation>), 323> = ArrayBuilder::new();
+                        for board in evaluated_board_state.1.iter() {
                             next_moves.push((*board, None));
                         }
                         let next_moves_size = next_moves.len();
-                        let index = writable_board_arrangement_positions.set_next_moves(next_moves.to_slice());
+                        let index = writable_board_arrangement_positions.set_next_moves(next_moves.iter().as_slice());
                         (index, next_moves_size)
                     };
     
@@ -118,13 +119,13 @@ pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App, eval
                     };
                     drop(writable_board_state);
 
-                    let next_moves = evaluated_board_state.1.to_slice();
-                    let mut ba_to_send: BoardArray<PositionToEvaluate, 20> = BoardArray::new(PositionToEvaluate { value: (None, Board::new())});
-                    for i in 0..next_moves.len() {
-                        ba_to_send.push(PositionToEvaluate{ value: (Some(board), next_moves[i]) });
+                    let next_moves = evaluated_board_state.1.iter();
+                    let mut ba_to_send: ArrayBuilder<PositionToEvaluate, 20> = ArrayBuilder::new();
+                    for next_move in next_moves {
+                        ba_to_send.push(PositionToEvaluate{ value: (Some(board), *next_move) });
                         if ba_to_send.len()==20 {
-                            eval_sender.send((board_depth+1, ba_to_send));
-                            ba_to_send = BoardArray::new(PositionToEvaluate { value: (None, Board::new())});
+                            eval_sender.send((board_depth+1, ba_to_send)).unwrap();
+                            ba_to_send = ArrayBuilder::new();
                         }
                     }
                     if ba_to_send.len() > 0 {
