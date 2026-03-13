@@ -407,41 +407,100 @@ pub fn can_come_after(source: &PieceArrangement, destination: &PieceArrangement)
     if missing_pawns < extra_pieces {
         return false;
     }
-    let source_pawns = convert_u64_pawns_to_pawn_position_vector(source.pawns);
-    let destination_pawns = convert_u64_pawns_to_pawn_position_vector(destination.pawns);
-    return match_pawns(source_pawns, destination_pawns);
+    let mut source_pawns = convert_u64_pawns_to_pawn_position_vector(source.pawns).into_iter().map(|p| Some(p)).collect();
+    let mut destination_pawns = convert_u64_pawns_to_pawn_position_vector(destination.pawns).into_iter().map(|p| Some(p)).collect();
+    return match_pawns(&mut source_pawns, &mut destination_pawns);
 }
 
-fn match_pawns(source: Vec<u8>, destination: Vec<u8>) -> bool {
-    let destination_index = 0;
-    let destination_pawn = destination[destination_index];
+fn match_pawns(source: &mut Vec<Option<u8>>, destination: &mut Vec<Option<u8>>) -> bool {
+    let destination_index = {
+        let mut d = None;
+        let mut i = 0;
+        for pawn in destination.iter() {
+            if let Some(pawn_position) = pawn {
+                d = Some((i, *pawn_position));
+                break;
+            }
+            i+=1;
+        };
+        d
+    };
+    if let None = destination_index {
+        return true;
+    }
+
+    let destination_index = destination_index.unwrap();
+    destination[destination_index.0] = None;
+
+    let destination_pawn = destination_index.1;
     let destination_pawn_rank = destination_pawn / 8;
     let destination_pawn_file = destination_pawn % 8;
-    for source_index in 0..source.len() {
-        let source_pawn = source[source_index];
-        let source_pawn_rank = source_pawn / 8;
-        let source_pawn_file = source_pawn % 8;
 
-        if source_pawn_rank > destination_pawn_rank {
-            continue;
-        }
-        let rank_difference = destination_pawn_rank - source_pawn_rank;
-        let file_start = (source_pawn_file as i16 - rank_difference as i16).clamp(0, 7) as u8;
-        let file_end = (source_pawn_file as i16 + rank_difference as i16).clamp(0, 7) as u8;
-        if file_start <= destination_pawn_file && destination_pawn_file <= file_end {
-            let mut new_destination = destination.clone();
-            new_destination.remove(destination_index);
-            if new_destination.len() == 0 {
-                return true;
+    let mut found = false;
+    {
+        for source_index in 0..source.len() {
+            let source_pawn = source[source_index];
+            if let None = source_pawn {
+                continue;
             }
-            let mut new_source = source.clone();
-            new_source.remove(source_index);
-            if match_pawns(new_source, new_destination) {
-                return true;
+
+            let source_pawn = source_pawn.unwrap();
+            let source_pawn_rank = source_pawn / 8;
+            let source_pawn_file = source_pawn % 8;
+
+            if source_pawn_rank > destination_pawn_rank {
+                continue;
+            }
+            let rank_difference = destination_pawn_rank - source_pawn_rank;
+            let file_start = (source_pawn_file as i16 - rank_difference as i16).clamp(0, 7) as u8;
+            let file_end = (source_pawn_file as i16 + rank_difference as i16).clamp(0, 7) as u8;
+            if file_start <= destination_pawn_file && destination_pawn_file <= file_end {
+                source[source_index] = None;
+                if match_pawns(source, destination) {
+                    found = true;
+                }
+                source[source_index] = Some(source_pawn);
+            }
+            if found {
+                break;
             }
         }
     }
-    return false;
+
+    destination[destination_index.0] = Some(destination_index.1);
+    return found;
+
+
+
+    // let destination_index = 0;
+    // let destination_pawn = destination[destination_index];
+    // let destination_pawn_rank = destination_pawn / 8;
+    // let destination_pawn_file = destination_pawn % 8;
+    // for source_index in 0..source.len() {
+    //     let source_pawn = source[source_index];
+    //     let source_pawn_rank = source_pawn / 8;
+    //     let source_pawn_file = source_pawn % 8;
+
+    //     if source_pawn_rank > destination_pawn_rank {
+    //         continue;
+    //     }
+    //     let rank_difference = destination_pawn_rank - source_pawn_rank;
+    //     let file_start = (source_pawn_file as i16 - rank_difference as i16).clamp(0, 7) as u8;
+    //     let file_end = (source_pawn_file as i16 + rank_difference as i16).clamp(0, 7) as u8;
+    //     if file_start <= destination_pawn_file && destination_pawn_file <= file_end {
+    //         let mut new_destination = destination.clone();
+    //         new_destination.remove(destination_index);
+    //         if new_destination.len() == 0 {
+    //             return true;
+    //         }
+    //         let mut new_source = source.clone();
+    //         new_source.remove(source_index);
+    //         if match_pawns(new_source, new_destination) {
+    //             return true;
+    //         }
+    //     }
+    // }
+    // return false;
 }
 
 
