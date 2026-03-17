@@ -1,8 +1,10 @@
+#![feature(sync_unsafe_cell)]
+
 mod core;
 
-use std::os::unix::thread;
+use std::{os::unix::thread, ptr};
 
-use crate::core::{app::App, chess::board::{Board, BoardArrangement}, engine::reevaluation_engine::{move_board, move_board_arrangement}, log::FILENAME};
+use crate::core::{app::App, chess::{board::{Board, BoardArrangement}, initial_board::INITIAL_BOARD}, engine::reevaluation_engine::{move_board, move_board_arrangement}, log::FILENAME, structs::queue::Queue};
 
 fn main() {
 
@@ -34,6 +36,16 @@ fn main() {
         let board: Board = serde_json::from_str("{\"pieces\":[144,0,160,176,168,160,152,144,136,136,136,136,136,136,136,136,0,0,152,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,200,200,0,0,0,0,0,0,0,0,0,0,0,200,200,200,0,0,200,200,200,208,216,224,240,232,224,216,208]}").unwrap();
         *move_board.write().unwrap() = board;
     }
+
+
+    // let init = [INITIAL_BOARD; 1];
+    // let q: Queue<Board, 10> = Queue::new();
+    // q.queue(&init);
+    // let mut init: [Board; 10] = [Board::new(); 10];
+    // let len = q.dequeue_optional(&mut init);
+    // println!("Len: {}\nBoard:\n{}\n", len, init[0]);
+    // return;
+
 
     // scratch();
     // return;

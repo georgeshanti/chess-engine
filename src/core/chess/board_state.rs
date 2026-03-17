@@ -35,6 +35,9 @@ impl Display for Evaluation {
 }
 
 impl Evaluation {
+    pub fn new() -> Self {
+        Evaluation { result: PositionResult::Scored, score: 0 }
+    }
     pub fn compare_to(self: &Self, other: &Self) -> Ordering {
         match (self.result, other.result) {
             (PositionResult::Win, PositionResult::Win) => self.score.cmp(&other.score),
