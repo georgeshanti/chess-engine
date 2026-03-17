@@ -4,10 +4,10 @@ use array_builder::ArrayBuilder;
 use chrono::{DateTime, Utc};
 use ratatui::layout::Position;
 
-use crate::{App, core::{chess::board::{Board, can_come_after_board_arrangement}, engine::{reevaluation_engine::move_board, structs::{PositionToEvaluate, PositionToReevaluate, TimestampedEvaluation}}, structs::map::Presence}, log};
+use crate::{App, core::{chess::board::{Board, can_come_after_board_arrangement}, engine::{reevaluation_engine::move_board, structs::{PositionToEvaluate, PositionToReevaluate, TimestampedEvaluation}}, structs::{copy_array_builder::CopyArrayBuilder, map::Presence, queue::Queue}}, log};
 pub static TIMED: RwLock<bool> = RwLock::new(false);
 
-pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App, eval_sender: Sender<(usize, ArrayBuilder<PositionToEvaluate, 40>)>) {
+pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App, eval_sender: Queue<(usize, CopyArrayBuilder<PositionToEvaluate, 40>), 1024>) {
     let timed: bool = *TIMED.read().unwrap();
     // while time elapsed is less than 10 seconds
     log!("Evaluation engine started");
@@ -125,18 +125,18 @@ pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App, eval
                     drop(writable_board_state);
 
                     let next_moves = evaluated_board_state.1.iter();
-                    let mut ba_to_send: ArrayBuilder<PositionToEvaluate, 40> = ArrayBuilder::new();
+                    let mut ba_to_send: CopyArrayBuilder<PositionToEvaluate, 40> = CopyArrayBuilder::new();
                     for next_move in next_moves {
                         ba_to_send.push(PositionToEvaluate{ value: (Some(board), *next_move) });
                         if ba_to_send.len()==40 {
                             // app.positions_to_evaluate.queue(board_depth+1, ba_to_send.iter().as_slice());
-                            eval_sender.send((board_depth+1, ba_to_send)).unwrap();
-                            ba_to_send = ArrayBuilder::new();
+                            eval_sender.queue([(board_depth+1, ba_to_send)].as_slice());
+                            ba_to_send = CopyArrayBuilder::new();
                         }
                     }
                     if ba_to_send.len() > 0 {
                         // app.positions_to_evaluate.queue(board_depth+1, ba_to_send.iter().as_slice());
-                        eval_sender.send((board_depth+1, ba_to_send)).unwrap();
+                        eval_sender.queue([(board_depth+1, ba_to_send)].as_slice());
                     }
                 },
                 Presence::Present { value } => {

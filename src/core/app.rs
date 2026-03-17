@@ -6,7 +6,7 @@ use regex::Regex;
 use thousands::Separable;
 use tui_input::{Input, backend::crossterm::EventHandler};
 
-use crate::{core::{chess::{board::{Board}, initial_board::INITIAL_BOARD, piece::{BLACK, EMPTY, get_color, get_presence}}, engine::{evaluation_engine::evaluation_engine, prune_engine::prune_engine, reevaluation_engine::reevaluation_engine, structs::{PositionToEvaluate, PositionsToEvaluate, PositionsToReevaluate}}, structs::{lock::LockWaiter, map::{GroupedPositions, Positions}, queue::DistributedQueue, weighted_queue::DistributedWeightedQueue}}, log};
+use crate::{core::{chess::{board::Board, initial_board::INITIAL_BOARD, piece::{BLACK, EMPTY, get_color, get_presence}}, engine::{evaluation_engine::evaluation_engine, prune_engine::prune_engine, reevaluation_engine::reevaluation_engine, structs::{PositionToEvaluate, PositionsToEvaluate, PositionsToReevaluate}}, structs::{copy_array_builder::CopyArrayBuilder, lock::LockWaiter, map::{GroupedPositions, Positions}, queue::{DistributedQueue, Queue}, weighted_queue::DistributedWeightedQueue}}, log};
 
 use serde_json;
 
@@ -420,18 +420,22 @@ impl App {
         log!("queued");
         let mut threads: Vec<JoinHandle<()>> = Vec::new();
         log!("Starting {} threads", thread_count);
-        let mut eval_senders: Vec<Sender<(usize, ArrayBuilder<PositionToEvaluate, 40>)>> = Vec::with_capacity(self.queuer_count);
+        let mut eval_senders: Vec<Queue<(usize, CopyArrayBuilder<PositionToEvaluate, 40>), 1024>> = Vec::with_capacity(self.queuer_count);
         for i in 0..self.queuer_count {
-            let (eval_sender, eval_receiver) = mpsc::channel::<(usize, ArrayBuilder<PositionToEvaluate, 40>)>();
+            let eval_queue = Queue::new();
+            let eval_queue_1 = eval_queue.clone();
             let q = self.positions_to_evaluate.clone();
             std::thread::Builder::new().name(format!("eval_queuer_{}", i)).spawn(move || {
+                let mut destination: [(usize, CopyArrayBuilder<PositionToEvaluate, 40>); 20] = [(0, CopyArrayBuilder::new()); 20];
                 loop {
-                    let value = eval_receiver.recv().unwrap();
-                    let vec = value.1;
-                    q.queue(value.0, vec.iter().as_slice());
+                    let len = eval_queue_1.dequeue_optional(&mut destination);
+                    if len == 0 { continue; }
+                    for list in &destination[0..len] {
+                        q.queue(list.0, list.1.iter().as_slice());
+                    }
                 }
             }).unwrap();
-            eval_senders.push(eval_sender);
+            eval_senders.push(eval_queue);
         }
         for i  in 0..self.thread_stats.len() {
             let app = self.clone();
