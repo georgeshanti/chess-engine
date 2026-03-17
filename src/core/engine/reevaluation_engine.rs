@@ -1,6 +1,6 @@
 use std::{cmp::Ordering, sync::{RwLock, mpsc::{self, Receiver, Sender}}, thread::sleep, time::{Duration, Instant}};
 
-use crate::{core::{app::App, chess::{board::{Board, BoardArrangement}, board_state::NextBestMove}, engine::structs::{PositionToReevaluate, PositionsToReevaluate}, structs::map::{GroupedPositions, Positions}}, log};
+use crate::{core::{app::App, chess::{board::{Board, BoardArrangement}, board_state::{Evaluation, NextBestMove}}, engine::structs::{PositionToReevaluate, PositionsToReevaluate}, structs::map::{GroupedPositions, Positions}}, log};
 use std::sync::LazyLock;
 
 pub static move_board: LazyLock<RwLock<Board>> = LazyLock::new(|| RwLock::new(Board::new()));
@@ -41,30 +41,18 @@ pub fn reevaluation_thread(positions_to_reevaluate: PositionsToReevaluate, posit
     loop {
         let _ = receiver.recv().unwrap();
         loop {
-            let value = {
-                let mut count = 0;
-                loop {
-                    match positions_to_reevaluate.dequeue_optional(index) {
-                        Some(value) => {
-                            break Some(value);
-                        }
-                        None => {
-                            count += 1;
-                            if count > 10 {
-                                break None;
-                            }
-                            // sleep(Duration::from_millis(100));
-                        }
-                    }
-                }
-            };
+            let now = Instant::now();
+            let mut output: [PositionToReevaluate; 20] = [PositionToReevaluate{value: (Board::new(), (Board::new(), (Evaluation::new(), now)))}; 20];
+            let len = positions_to_reevaluate.dequeue_optional(index, &mut output);
 
-            let value = match value {
-                Some(value) => value,
-                None => break,
-            };
+            if len == 0 {
+                break;
+            }
 
-            for (board_to_reevaluate, (next_board, (next_board_new_evaluation, next_board_new_evaluation_timestamp))) in value {
+            let value = &output[0..len];
+
+            for position_to_reevaluate in value {
+                let (board_to_reevaluate, (next_board, (next_board_new_evaluation, next_board_new_evaluation_timestamp))) = position_to_reevaluate.value;
                 if board_to_reevaluate == *move_board.read().unwrap() {
                     log!("Checking move: {}", next_board);
                     log!("Move eval: {}", next_board_new_evaluation);
@@ -119,7 +107,7 @@ pub fn reevaluation_thread(positions_to_reevaluate: PositionsToReevaluate, posit
                             if current_next_best_move.is_none() || current_next_best_move.unwrap() != best_move {
                                 *current_next_best_move = Some(best_move);
                                 let queue: Vec<PositionToReevaluate> = board_state.previous_moves.read().unwrap().iter().map(|previous_board| {
-                                    (*previous_board, (board_to_reevaluate, (best_move.evaluation, Instant::now())))
+                                    PositionToReevaluate{value:(*previous_board, (board_to_reevaluate, (best_move.evaluation, Instant::now())))}
                                 }).collect();
                                 positions_to_reevaluate.queue(queue);
                             }

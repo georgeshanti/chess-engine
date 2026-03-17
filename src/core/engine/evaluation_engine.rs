@@ -4,7 +4,7 @@ use array_builder::ArrayBuilder;
 use chrono::{DateTime, Utc};
 use ratatui::layout::Position;
 
-use crate::{App, core::{chess::board::{Board, can_come_after_board_arrangement}, engine::{reevaluation_engine::move_board, structs::{PositionToEvaluate, TimestampedEvaluation}}, structs::map::Presence}, log};
+use crate::{App, core::{chess::board::{Board, can_come_after_board_arrangement}, engine::{reevaluation_engine::move_board, structs::{PositionToEvaluate, PositionToReevaluate, TimestampedEvaluation}}, structs::map::Presence}, log};
 pub static TIMED: RwLock<bool> = RwLock::new(false);
 
 pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App, eval_sender: Sender<(usize, ArrayBuilder<PositionToEvaluate, 40>)>) {
@@ -37,13 +37,14 @@ pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App, eval
         let max_depth = {
             *app.current_depth.read().unwrap()
         };
-        let (board_depth, positions_to_evaluate_list) = {
+        let mut value = [PositionToEvaluate{value: (None, Board::new())}; 20];
+        let (board_depth, len) = {
             let mut c = 0;
             let res = loop {
                 if c > 10 {
                     break None;
                 }
-                match positions_to_evaluate.dequeue_optional(index) {
+                match positions_to_evaluate.dequeue_optional(index, &mut value) {
                     Some(value) => {
                         break Some(value)
                     }
@@ -58,6 +59,7 @@ pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App, eval
                 None => continue,
             }
         };
+        // log!("board_depth: {}, len: {}", board_depth, len);
         let run_lock_lock = app.run_lock.read().unwrap();
         // if board_depth > 2 {
         //     continue;
@@ -65,8 +67,11 @@ pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App, eval
         let current_board_arrangement = {
             app.current_board.read().unwrap()
         }.get_board_arrangement();
+        let positions_to_evaluate_list = &value[0..len];
         let mut skippable_set: HashSet<Board> = HashSet::new();
         for position in positions_to_evaluate_list {
+            // log!("position got:\n{}", position.value.1);
+            // return;
             let (previous_board, board) = position.value;
             if let Some(previous_board) = previous_board {
                 if skippable_set.contains(&previous_board) {
@@ -112,7 +117,7 @@ pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App, eval
                                 writable_board_state.previous_moves.write().unwrap().insert(previous_board);
                             }
                             {
-                                positions_to_reevaluate.queue(vec!((previous_board, (board, (evaluated_board_state.0, Instant::now())))));
+                                positions_to_reevaluate.queue(vec!(PositionToReevaluate{value: (previous_board, (board, (evaluated_board_state.0, Instant::now())))}));
                             }
                         },
                         _ => {}
@@ -124,11 +129,13 @@ pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App, eval
                     for next_move in next_moves {
                         ba_to_send.push(PositionToEvaluate{ value: (Some(board), *next_move) });
                         if ba_to_send.len()==40 {
+                            // app.positions_to_evaluate.queue(board_depth+1, ba_to_send.iter().as_slice());
                             eval_sender.send((board_depth+1, ba_to_send)).unwrap();
                             ba_to_send = ArrayBuilder::new();
                         }
                     }
                     if ba_to_send.len() > 0 {
+                        // app.positions_to_evaluate.queue(board_depth+1, ba_to_send.iter().as_slice());
                         eval_sender.send((board_depth+1, ba_to_send)).unwrap();
                     }
                 },
@@ -147,7 +154,7 @@ pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App, eval
                                     next_best_move.evaluation
                                 }
                             };
-                            positions_to_reevaluate.queue(vec!((previous_board, (board, (eval, Instant::now())))));
+                            positions_to_reevaluate.queue(vec!(PositionToReevaluate{value: (previous_board, (board, (eval, Instant::now())))}));
                         }
                     }
                 },
