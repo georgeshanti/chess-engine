@@ -93,11 +93,12 @@ impl Board {
     }
 
     #[inline(never)]
-    pub fn find_moves(self: &Self) -> ArrayBuilder<Board, 323> {
+    pub fn find_moves(self: &Self) -> (ArrayBuilder<Board, 323>, ArrayBuilder<Board, 323>) {
         let presence_board = Board {pieces: and_byte(self.pieces, PRESENCE_BITS)};
         let color_board = Board {pieces: and_byte(self.pieces, COLOR_BITS)};
         let type_board = Board {pieces: and_byte(self.pieces, TYPE_BITS)};
         let mut moves = ArrayBuilder::new();
+        let mut diff_moves = ArrayBuilder::new();
         for i in 0..64 {
             if presence_board.pieces[i] == EMPTY || color_board.pieces[i] == BLACK {
                 continue;
@@ -120,13 +121,13 @@ impl Board {
                         let mut new_board = self.clone();
                         new_board.set(rank, file, EMPTY);
                         new_board.set(rank+1, file, PRESENT | WHITE | PAWN | HAS_NOT_MOVED_TWO_SQUARES);
-                        moves.push(new_board);
+                        diff_moves.push(new_board);
 
                         if rank<6 && presence_board.get(rank+2, file) == EMPTY {
                             let mut new_board = self.clone();
                             new_board.set(rank, file, EMPTY);
                             new_board.set(rank+2, file, PRESENT | WHITE | PAWN | HAS_MOVED_TWO_SQUARES);
-                            moves.push(new_board);
+                            diff_moves.push(new_board);
                         }
                     }
                     for diagonal in PAWN_DIAGONALS {
@@ -139,7 +140,7 @@ impl Board {
                                 let mut new_board = self.clone();
                                 new_board.set(rank, file, EMPTY);
                                 new_board.set(destination.0, destination.1, PRESENT | WHITE | PAWN | HAS_NOT_MOVED_TWO_SQUARES);
-                                moves.push(new_board);
+                                diff_moves.push(new_board);
                             }
                         }
                     }
@@ -182,7 +183,7 @@ impl Board {
                                             let mut new_board = self.clone();
                                             new_board.set(rank, file, EMPTY);
                                             new_board.set(destination.0, destination.1, PRESENT | WHITE | type_board.pieces[i]);
-                                            moves.push(new_board);
+                                            diff_moves.push(new_board);
                                         }
                                     }
                                 } else {
@@ -201,7 +202,13 @@ impl Board {
             new_board.normalize_opponent_pieces();
             *board = new_board
         });
-        moves
+        diff_moves.iter_mut().for_each(|board| {
+            let mut new_board = board.clone();
+            new_board = new_board.inverted();
+            new_board.normalize_opponent_pieces();
+            *board = new_board
+        });
+        (moves, diff_moves)
     }
 
     fn is_opponent_in_check(self: &Self) -> bool {
@@ -250,21 +257,28 @@ impl Board {
         return false;
     }
 
-    pub fn get_evaluation(self: &Self) -> (Evaluation, ArrayBuilder<Board, 323>) {
-        let moves = self.find_moves();
+    pub fn get_evaluation(self: &Self) -> (Evaluation, ArrayBuilder<Board, 323>, ArrayBuilder<Board, 323>) {
+        let (moves, diff_moves) = self.find_moves();
         let mut legal_moves = ArrayBuilder::new();
+        let mut legal_diff_moves = ArrayBuilder::new();
         for board in moves.iter() {
             if !board.is_opponent_in_check() {
                 legal_moves.push(*board);
             }
         }
-        if legal_moves.len() == 0 {
+        for board in diff_moves.iter() {
+            if !board.is_opponent_in_check() {
+                legal_diff_moves.push(*board);
+            }
+        }
+        if legal_moves.len() == 0 && legal_diff_moves.len() == 0 {
             let inverted_board = self.inverted();
             if inverted_board.is_opponent_in_check() {
                 return (Evaluation{
                         result: PositionResult::Loss,
                         score: 0,
                     },
+                    ArrayBuilder::new(),
                     ArrayBuilder::new(),
                 );
             } else {
@@ -273,6 +287,7 @@ impl Board {
                         result: PositionResult::Draw,
                         score: 0,
                     },
+                    ArrayBuilder::new(),
                     ArrayBuilder::new(),
                 );
             }
@@ -296,6 +311,7 @@ impl Board {
                 score: material as i32,
             },
             legal_moves,
+            legal_diff_moves,
         );
     }
 
@@ -306,23 +322,24 @@ impl Board {
     //     black_major: &mut [u8; 6],
     // )
 
-    pub fn get_board_arrangement(self: &Self) -> BoardArrangement {
-        let mut white_pawns: u64 = 0;
-        let mut white_major: [u8; 6] = [0; 6];
-        let mut black_pawns: u64 = 0;
-        let mut black_major: [u8; 6] = [0; 6];
-        let type_board = Board {pieces: and_byte(self.pieces, TYPE_BITS)};
-        for i in 0..64 {
-            let piece = self.pieces[i];
+    pub fn compute(
+        piece: u8,
+        white_pawns: &mut u64,
+        white_major: &mut [u8; 6],
+        black_pawns: &mut u64,
+        black_major: &mut [u8; 6],
+        type_board: Board,
+        i: usize,
+    ) {
             if get_presence(piece) == EMPTY {
-                continue;
+                return;
             } else {
                 let piece_type = type_board.pieces[i];
                 if piece_type == PAWN {
                     if get_color(piece) == WHITE {
-                        white_pawns = white_pawns | (1 << i);
+                        *white_pawns = *white_pawns | (1 << i);
                     } else {
-                        black_pawns = black_pawns | (1 << 63-i);
+                        *black_pawns = *black_pawns | (1 << 63-i);
                     }
                 }
                 let index = (piece_type >> 3) - 1;
@@ -332,6 +349,17 @@ impl Board {
                     black_major[index as usize] = black_major[index as usize] + 1;
                 }
             }
+    }
+
+    pub fn get_board_arrangement(self: &Self) -> BoardArrangement {
+        let mut white_pawns: u64 = 0;
+        let mut white_major: [u8; 6] = [0; 6];
+        let mut black_pawns: u64 = 0;
+        let mut black_major: [u8; 6] = [0; 6];
+        let type_board = Board {pieces: and_byte(self.pieces, TYPE_BITS)};
+        for i in 0..64 {
+            let piece = self.pieces[i];
+            Board::compute(piece, &mut white_pawns, &mut white_major, &mut black_pawns, &mut black_major, type_board, i);
         }
         return match white_pawns.cmp(&black_pawns) {
             std::cmp::Ordering::Greater => BoardArrangement {

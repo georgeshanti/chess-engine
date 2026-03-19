@@ -83,7 +83,7 @@ pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App, eval
                     continue;
                 }
             }
-            let pointer_to_board = positions.clone().edit(index, &board);
+            let pointer_to_board = positions.edit(index, &board);
             match pointer_to_board {
                 Presence::Absent { value } => {
                     {
@@ -100,6 +100,9 @@ pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App, eval
                         let mut writable_board_arrangement_positions = board_arrangement_positions.write().unwrap();
                         let mut next_moves: ArrayBuilder<(Board, Option<TimestampedEvaluation>), 323> = ArrayBuilder::new();
                         for board in evaluated_board_state.1.iter() {
+                            next_moves.push((*board, None));
+                        }
+                        for board in evaluated_board_state.2.iter() {
                             next_moves.push((*board, None));
                         }
                         let next_moves_size = next_moves.len();
@@ -124,7 +127,8 @@ pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App, eval
                     };
                     drop(writable_board_state);
 
-                    let next_moves = evaluated_board_state.1.iter();
+                    app.positions_to_evaluate.queues[index].queue( evaluated_board_state.1.iter().map(|next_board| PositionToEvaluate{value: (Some(board), *next_board)}).collect(), board_depth+1);
+                    let next_moves = evaluated_board_state.2.iter();
                     let mut ba_to_send: ArrayBuilder<PositionToEvaluate, 40> = ArrayBuilder::new();
                     for next_move in next_moves {
                         ba_to_send.push(PositionToEvaluate{ value: (Some(board), *next_move) });
