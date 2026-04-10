@@ -165,7 +165,7 @@ pub struct ConcurrentQueuePage<T, const N: usize> {
 //     }
 // }
 
-impl<T: Display, const N: usize> ConcurrentQueuePage<T, N> {
+impl<T, const N: usize> ConcurrentQueuePage<T, N> {
     const UNINIT: SyncUnsafeCell<MaybeUninit<T>> = SyncUnsafeCell::new(MaybeUninit::uninit());
 
     /// Create a new ArrayBuilder, backed by an uninitialised [T; N]

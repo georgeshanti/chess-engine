@@ -60,9 +60,9 @@ pub fn get_has_moved_two_squares(b: u8) -> bool {
     (b & HAS_MOVED_TWO_SQUARES_BITS) == HAS_MOVED_TWO_SQUARES
 }
 
-pub fn char(b: u8) -> String {
+pub fn char(b: u8) -> u16 {
 	if get_presence(b) == EMPTY {
-		return " ".to_string();
+		return b' ' as u16;
 	}
 	let mut char = 0x2600;
 	match get_color(b) {
@@ -79,7 +79,7 @@ pub fn char(b: u8) -> String {
         KING => char += 0x0000,
         _ => panic!("Invalid piece type"),
 	}
-	return String::from_utf16(&[char]).unwrap();
+	return char;
 }
 
 pub fn get_material_value(b: u8) -> i64 {

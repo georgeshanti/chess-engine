@@ -1,12 +1,20 @@
 #![feature(sync_unsafe_cell)]
 
+#[global_allocator]
+static GLOBAL: CustomAlloc<System> = CustomAlloc{allocator: System{}};
+
 mod core;
 
-use std::{os::unix::thread, ptr};
+use std::{alloc::System, os::unix::thread, ptr};
 
-use crate::core::{app::App, chess::{board::{Board, BoardArrangement}, initial_board::INITIAL_BOARD}, engine::reevaluation_engine::{move_board, move_board_arrangement}, log::FILENAME, structs::queue::Queue};
+use crate::core::{app::{App, convert_to_u8, convert_to_u8_slice}, chess::{board::{Board, BoardArrangement}, initial_board::INITIAL_BOARD, piece::char}, engine::reevaluation_engine::{move_board, move_board_arrangement}, log::FILENAME, mem::alloc::{CustomAlloc, convert_to_hex}, structs::queue::Queue};
 
 fn main() {
+    // let mut sbuf: [u8; 4096] = [0; 4096];
+    // let t = convert_to_u8_slice(&INITIAL_BOARD.d(), &mut sbuf);
+    // let s = unsafe{std::str::from_utf8_unchecked(&sbuf[0..t])};
+    // println!("{}", s);
+    // return;
 
     unsafe {
         let f = format!("logs/{}.log", chrono::Local::now().format("%Y-%m-%d_%H-%M-%S").to_string());

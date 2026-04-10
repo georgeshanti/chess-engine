@@ -388,6 +388,85 @@ impl Board {
             },
         }
     }
+    
+    pub fn d(&self) -> [u16; 578] {
+        let top_string = {
+            let mut top_string = [0 as u16; 33];
+            top_string[0] = 0x250C;
+            for i in 0..7 {
+                top_string[1+(4*i)] = 0x2500;
+                top_string[1+(4*i)+1] = 0x2500;
+                top_string[1+(4*i)+2] = 0x2500;
+                top_string[1+(4*i)+3] = 0x252C;
+            }
+            top_string[29] = 0x2500;
+            top_string[30] = 0x2500;
+            top_string[31] = 0x2500;
+            top_string[32] = 0x2510;
+            top_string
+        };
+
+        let between_string = {
+            let mut between_string = [0 as u16; 33];
+            between_string[0] = 0x251C;
+
+            for i in 0..7 {
+                between_string[1+(4*i)] = 0x2500;
+                between_string[1+(4*i)+1] = 0x2500;
+                between_string[1+(4*i)+2] = 0x2500;
+                between_string[1+(4*i)+3] = 0x253C;
+            }
+            between_string[29] = 0x2500;
+            between_string[30] = 0x2500;
+            between_string[31] = 0x2500;
+            between_string[32] = 0x2524;
+
+            between_string
+        };
+
+        let bottom_string = {
+            let mut bottom_string = [0 as u16; 33];
+            bottom_string[0] = 0x2514;
+
+            for i in 0..7 {
+                bottom_string[1+(4*i)] = 0x2500;
+                bottom_string[1+(4*i)+1] = 0x2500;
+                bottom_string[1+(4*i)+2] = 0x2500;
+                bottom_string[1+(4*i)+3] = 0x2534;
+            }
+            bottom_string[29] = 0x2500;
+            bottom_string[30] = 0x2500;
+            bottom_string[31] = 0x2500;
+            bottom_string[32] = 0x2518;
+
+            bottom_string
+        };
+
+        let mut message = [0; 578];
+        message[0..33].copy_from_slice(&top_string);
+        message[33] = b'\n' as u16;
+
+        for i in 0..8 {
+            let mut row_chars: [u16; 33] = [0; 33];
+            row_chars[0] = 0x2502;
+            for j in 0..8 {
+                row_chars[(j*4)+1] = b' ' as u16;
+                row_chars[(j*4)+2] = char(self.get(7-i, j));
+                row_chars[(j*4)+3] = b' ' as u16;
+                row_chars[(j*4)+4] = 0x2502;
+            }
+            let start = (((i*2)+1)*34);
+            message[start..(start+33)].copy_from_slice(&row_chars);
+            message[start+33] = b'\n' as u16;
+            if(i!=7) {
+                message[(start+34)..(start+34+33)].copy_from_slice(&between_string);
+                message[(start+34+33)] = b'\n' as u16;
+            }
+        }
+        message[545..578].copy_from_slice(&bottom_string);
+        // message += &bottom_string;
+        message
+    }
 }
 
 pub fn can_come_after(source: &PieceArrangement, destination: &PieceArrangement) -> bool {
@@ -551,105 +630,23 @@ pub fn can_come_after_board_arrangement(source: &BoardArrangement, destination: 
     return false;
 }
 
-impl Display for BoardArrangement {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut board = Board { pieces: [0; 64] };
-        for i in 0..64 {
-            if 1<<i & self.higher.pawns != 0 {
-                board.set(i / 8, i % 8, PRESENT | WHITE | PAWN | HAS_NOT_MOVED_TWO_SQUARES);
-            }
-            if 1<<i & self.lower.pawns != 0 {
-                board.set((63-i) / 8, (63-i) % 8, PRESENT | BLACK | PAWN | HAS_NOT_MOVED_TWO_SQUARES);
-            }
-        }
-        board.fmt(f)
-    }
-}
+// impl Display for BoardArrangement {
+//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//         let mut board = Board { pieces: [0; 64] };
+//         for i in 0..64 {
+//             if 1<<i & self.higher.pawns != 0 {
+//                 board.set(i / 8, i % 8, PRESENT | WHITE | PAWN | HAS_NOT_MOVED_TWO_SQUARES);
+//             }
+//             if 1<<i & self.lower.pawns != 0 {
+//                 board.set((63-i) / 8, (63-i) % 8, PRESENT | BLACK | PAWN | HAS_NOT_MOVED_TWO_SQUARES);
+//             }
+//         }
+//         board.fmt(f)
+//     }
+// }
 
 #[derive(Eq, PartialEq, Hash, Clone, Serialize, Deserialize, Debug)]
 pub struct PieceArrangement {
     pawns: u64,
     major_pieces: [u8; 6],
-}
-
-impl Display for Board {
-    
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let top_string = {
-            let mut top_string = [0 as u16; 33];
-            top_string[0] = 0x250C;
-            for i in 0..7 {
-                top_string[1+(4*i)] = 0x2500;
-                top_string[1+(4*i)+1] = 0x2500;
-                top_string[1+(4*i)+2] = 0x2500;
-                top_string[1+(4*i)+3] = 0x252C;
-            }
-            top_string[29] = 0x2500;
-            top_string[30] = 0x2500;
-            top_string[31] = 0x2500;
-            top_string[32] = 0x2510;
-
-            String::from_utf16(&top_string).unwrap()
-        };
-
-        let between_string = {
-            let mut between_string = [0 as u16; 33];
-            between_string[0] = 0x251C;
-
-            for i in 0..7 {
-                between_string[1+(4*i)] = 0x2500;
-                between_string[1+(4*i)+1] = 0x2500;
-                between_string[1+(4*i)+2] = 0x2500;
-                between_string[1+(4*i)+3] = 0x253C;
-            }
-            between_string[29] = 0x2500;
-            between_string[30] = 0x2500;
-            between_string[31] = 0x2500;
-            between_string[32] = 0x2524;
-
-            String::from_utf16(&between_string).unwrap()
-        };
-
-        let bottom_string = {
-            let mut bottom_string = [0 as u16; 33];
-            bottom_string[0] = 0x2514;
-
-            for i in 0..7 {
-                bottom_string[1+(4*i)] = 0x2500;
-                bottom_string[1+(4*i)+1] = 0x2500;
-                bottom_string[1+(4*i)+2] = 0x2500;
-                bottom_string[1+(4*i)+3] = 0x2534;
-            }
-            bottom_string[29] = 0x2500;
-            bottom_string[30] = 0x2500;
-            bottom_string[31] = 0x2500;
-            bottom_string[32] = 0x2518;
-
-            String::from_utf16(&bottom_string).unwrap()
-        };
-
-        let mut message = String::from("");
-        message += &top_string;
-        message += "\n";
-
-        for i in 0..8 {
-            let mut row_chars = String::from_utf16(&[0x2502]).unwrap();
-            for j in 0..8 {
-                row_chars += " ";
-                row_chars += &char(self.get(7-i, j));
-                row_chars += " ";
-                row_chars += &String::from_utf16(&[0x2502]).unwrap();
-            }
-            message += &row_chars;
-            message += "\n";
-            if(i!=7) {
-                message += &between_string;
-                message += "\n";
-            }
-        }
-        message += &bottom_string;
-
-        write!(f, "{}", message)
-
-    }
 }

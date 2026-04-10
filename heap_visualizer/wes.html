@@ -1,0 +1,39 @@
+<body>
+    <canvas id="heap"></canvas>
+</body>
+<script>
+    const canvas = document.getElementById("heap");
+    const ctx = canvas.getContext("2d");
+    let width = Math.floor(window.innerWidth / 3);
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    const wsUri = "/ws";
+    const websocket = new WebSocket(wsUri);
+    const allocRe= /^Alloc: 0x(\w+) align: 0x(\w+) size: 0x(\w+)/;
+    const dllocRe= /^Dlloc: 0x(\w+) align: 0x(\w+) size: 0x(\w+)/;
+    var base = null;
+    websocket.addEventListener("message", (data) => {
+        var allocMatch = data.data.match(allocRe);
+        var dllocMatch = data.data.match(dllocRe);
+        if (allocMatch != null) {
+            var address = Number(`0x${allocMatch[1]}`);
+            if(base == null) {
+                base = address;
+            } else if (base>address) {
+                return;
+            }
+            address = address-base;
+            var size = Number(`0x${allocMatch[3]}`);
+            while(size>0) {
+                var x = address % width;
+                var y = Math.floor(address / width);
+                var widthToDraw = Math.min(size, width);
+                ctx.strokeRect(x*3, y*3, widthToDraw, 1);
+                size = size - widthToDraw;   
+            }
+        } else {
+            
+        }
+    });
+</script>

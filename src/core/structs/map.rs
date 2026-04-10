@@ -42,14 +42,13 @@ impl GroupedPositions {
         self.map[index].clone().unwrap().get(board)
     }
 
-    pub fn len(self: &Self) -> String {
-        let mut lens = vec![];
+    pub fn len(self: &Self) -> [(usize, usize); 16] {
+        let mut lens = [(0, 0); 16];
         for i in 0..self.length {
             let position = self.map[i].clone().unwrap();
-            lens.push(position.len());
+            lens[i] = position.len();
         }
-        let t = lens.join(", ");
-        format!("{{{}}}", t)
+        lens
     }
 }
 
@@ -262,12 +261,12 @@ impl Positions {
         }
     }
 
-    pub fn len(&self) -> String {
+    pub fn len(&self) -> (usize, usize) {
         let mut len = 0;
         for (_, value) in self.map.read().unwrap().iter() {
             let board_arrangement_positions = value.read().unwrap();
             len = len + board_arrangement_positions.positions_size;
         }
-        format!("{}: {}", self.map.read().unwrap().len(), len)
+        (self.map.read().unwrap().len(), len)
     }
 }

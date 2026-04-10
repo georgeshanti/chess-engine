@@ -11,23 +11,23 @@ pub struct PositionToEvaluate {
     pub value: (Option<Board>, Board)
 }
 
-impl Display for PositionToEvaluate {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "previous:");
-        match self.value.0 {
-            None => {
-                write!(f, " None");
-            },
-            Some(board) => {
-                write!(f, "\n");
-                std::fmt::Display::fmt(&board, f).unwrap();
-            },
-        };
-        write!(f, "\n");
-        std::fmt::Display::fmt(&self.value.1, f).unwrap();
-        Ok(())
-    }
-}
+// impl Display for PositionToEvaluate {
+//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//         write!(f, "previous:");
+//         match self.value.0 {
+//             None => {
+//                 write!(f, " None");
+//             },
+//             Some(board) => {
+//                 write!(f, "\n");
+//                 std::fmt::Display::fmt(&board, f).unwrap();
+//             },
+//         };
+//         write!(f, "\n");
+//         std::fmt::Display::fmt(&self.value.1, f).unwrap();
+//         Ok(())
+//     }
+// }
 
 impl Cash for PositionToEvaluate {
     fn cash(self: &Self) -> u64 {

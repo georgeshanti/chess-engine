@@ -90,7 +90,7 @@ impl<T> QueuePage<T> {
 }
 
 #[derive(Clone)]
-pub struct Queue<T: Display, const N: usize> {
+pub struct Queue<T, const N: usize> {
     pub head: Arc<RwLock<Option<(usize, usize)>>>,
     pub tail: Arc<RwLock<Option<(usize, usize)>>>,
 
@@ -101,7 +101,7 @@ pub struct Queue<T: Display, const N: usize> {
     pub length: Arc<RwLock<usize>>,
 }
 
-impl<T: Copy + Display, const N: usize> Queue<T, N> {
+impl<T: Copy, const N: usize> Queue<T, N> {
     pub fn new() -> Self {
         let size = 1024;
         let mut empty_pages = BTreeSet::new();

@@ -3,14 +3,14 @@ use std::{collections::BTreeMap, fmt::Display, sync::{Arc, Condvar, Mutex, RwLoc
 use crate::{core::structs::{cash::Cash, lock::LockWaiter, queue::Queue, threaded_queue::ThreadedQueue}, log};
 
 #[derive(Clone)]
-pub struct WeightedQueue<T: Display, const N: usize> {
+pub struct WeightedQueue<T, const N: usize> {
     pub thread_count: usize,
     pub queues: Arc<RwLock<BTreeMap<usize, Queue<T, N>>>>,
     waiter: LockWaiter,
     max: Arc<RwLock<usize>>,
 }
 
-impl<T: Copy + Display, const N: usize> WeightedQueue<T, N> {
+impl<T: Copy, const N: usize> WeightedQueue<T, N> {
     pub fn new(thread_count: usize, max: Arc<RwLock<usize>>, waiter: LockWaiter) -> Self {
         WeightedQueue {
             thread_count,
@@ -88,12 +88,12 @@ impl<T: Copy + Display, const N: usize> WeightedQueue<T, N> {
 }
 
 #[derive(Clone)]
-pub struct DistributedWeightedQueue<T: Clone + Cash + Display, const N: usize> {
+pub struct DistributedWeightedQueue<T: Clone + Cash, const N: usize> {
     pub size: usize,
     pub queues: Vec<WeightedQueue<T, N>>,
 }
 
-impl<T: Copy + Cash + Display, const N: usize> DistributedWeightedQueue<T, N> {
+impl<T: Copy + Cash, const N: usize> DistributedWeightedQueue<T, N> {
     pub fn new(size: usize, max: Arc<RwLock<usize>>, waiter: LockWaiter) -> Self {
         DistributedWeightedQueue {
             size,

@@ -54,7 +54,7 @@ pub fn reevaluation_thread(positions_to_reevaluate: PositionsToReevaluate, posit
             for position_to_reevaluate in value {
                 let (board_to_reevaluate, (next_board, (next_board_new_evaluation, next_board_new_evaluation_timestamp))) = position_to_reevaluate.value;
                 if board_to_reevaluate == *move_board.read().unwrap() {
-                    log!("Checking move: {}", next_board);
+                    log!("Checking move: {:?}", next_board.d());
                     log!("Move eval: {}", next_board_new_evaluation);
                 }
                 if let Some(pointer_to_board) = positions.get(&board_to_reevaluate) {
