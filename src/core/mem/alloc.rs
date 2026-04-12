@@ -34,6 +34,7 @@ unsafe impl<T: GlobalAlloc> GlobalAlloc for CustomAlloc<T> {
         line[LINE_SIZE-1] = b'\n';
 
         std::io::Write::write(&mut file, &line).unwrap();
+        wait(Duration::from_millis(100));
         ptr
     }
 

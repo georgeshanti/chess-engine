@@ -208,7 +208,6 @@ impl Block {
 
 impl Widget for Block {
     fn render(&self, stdout: &mut Stdout, rect: Rect) {
-        log!("rect width: {}", rect.width);
         stdout.queue(MoveTo(rect.x, rect.y));
 
         let mut horizontal_bar: [u16; 512] = [0x2500; 512];
