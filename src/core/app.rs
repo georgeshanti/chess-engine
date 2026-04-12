@@ -1,13 +1,13 @@
-use std::{os::unix::thread, sync::{Arc, Condvar, Mutex, RwLock, mpsc::{self, Receiver, Sender}}, thread::{JoinHandle, sleep}, time::{Duration, Instant}};
+use std::{ops::Deref, os::unix::thread, sync::{Arc, Condvar, Mutex, RwLock, mpsc::{self, Receiver, Sender}}, thread::{JoinHandle, sleep}, time::{Duration, Instant}};
 
 use array_builder::ArrayBuilder;
 use chrono::format::Fixed;
-use ratatui::{Frame, crossterm::event::{Event, KeyCode, poll, read}, layout::{Alignment, Constraint, Direction, Layout, Margin, Position, Rect}, style::Style, widgets::{Block, Borders, Widget}};
+use crossterm::{Command, event::{Event, KeyCode, poll, read}};
 use regex::Regex;
 use thousands::Separable;
-use tui_input::{Input, backend::crossterm::EventHandler};
+use tui_input::{backend::crossterm::EventHandler};
 
-use crate::{core::{chess::{board::{Board}, initial_board::INITIAL_BOARD, piece::{BLACK, EMPTY, get_color, get_presence}}, engine::{evaluation_engine::evaluation_engine, prune_engine::prune_engine, reevaluation_engine::reevaluation_engine, structs::{PositionToEvaluate, PositionsToEvaluate, PositionsToReevaluate}}, structs::{lock::LockWaiter, map::{GroupedPositions, Positions}, queue::DistributedQueue, weighted_queue::DistributedWeightedQueue}}, log};
+use crate::{core::{chess::{board::Board, initial_board::INITIAL_BOARD, piece::{BLACK, EMPTY, get_color, get_presence}}, draw::{Alignment, Block, Borders, Constraint, Direction, FixedLengthString, Frame, Input, Layout, Margin, RawU16Buffer, Rect, convert_usize_to_u8_string}, engine::{evaluation_engine::evaluation_engine, prune_engine::prune_engine, reevaluation_engine::reevaluation_engine, structs::{PositionToEvaluate, PositionsToEvaluate, PositionsToReevaluate}}, structs::{lock::LockWaiter, map::{GroupedPositions, Positions}, queue::DistributedQueue, weighted_queue::DistributedWeightedQueue}}, log};
 
 use serde_json;
 
@@ -38,7 +38,6 @@ impl App {
         let depth = Arc::new(RwLock::new(5));
         let waiter = LockWaiter::new();
         let mut prompt = FixedLengthString::new (&[b'E', b'n', b't', b'e', b'r', b' ', b'm', b'o', b'v', b'e', b':']);
-        prompt.length = 11;
         let mut app = App {
             positions: GroupedPositions::new(computer_count),
             positions_to_evaluate: DistributedWeightedQueue::new(computer_count, depth.clone(), waiter.clone()),
@@ -50,7 +49,7 @@ impl App {
             queuer_count: queuer_count,
             positions_evaluated_acount: Arc::new(RwLock::new(0)),
             frame_count: 0,
-            input: Arc::new(RwLock::new(Input::new(String::from("")))),
+            input: Arc::new(RwLock::new(Input::new())),
             editing: Arc::new(RwLock::new(true)),
             prompt: Arc::new(RwLock::new(prompt)),
             start_time: std::time::Instant::now(),
@@ -73,9 +72,9 @@ impl App {
         {
             let mut t = self.clone();
             let _used = std::thread::Builder::new().name(String::from("Drawer")).spawn(move || {
-                let mut terminal = ratatui::init();
+                let mut frame = Frame::new();
                 loop {
-                    terminal.draw(|frame| t.draw(frame)).unwrap();
+                    t.draw(&mut frame);
                     std::thread::sleep(Duration::from_millis(100));
                 }
             }).unwrap();
@@ -149,168 +148,169 @@ impl App {
         }
     }
 
-    fn draw(&mut self, frame: &mut Frame) {
+    pub fn draw(&mut self, frame: &mut Frame) {
         // let _unused = self.run_lock.write().unwrap();
         let thread_count = self.thread_stats.len();
         let [left_pane, right_pane] = Layout::default()
+        // let l = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([
+            .constraints(&[
                 Constraint::Percentage(50),
                 Constraint::Percentage(50),
             ])
-            .split(frame.area()).as_ref().try_into().unwrap();
+            .split(frame.area()).deref().try_into().unwrap();
         let [global_status_pane, thread_status_pane] = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Length(5), Constraint::Fill(1)])
-            .split(right_pane.inner(Margin::new(1, 1))).as_ref().try_into().unwrap();
+            .constraints(&[Constraint::Length(5), Constraint::Fill(1)])
+            .split(right_pane.inner(Margin{m: 1})).deref().try_into().unwrap();
 
         let [board_pane, prompt_pane] = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([
+            .constraints(&[
                 Constraint::Fill(1),
                 Constraint::Length(3),
             ])
-            .split(left_pane).as_ref().try_into().unwrap();
-        let status_pane = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints(&[Constraint::Length(4); 124][0..thread_count])
-            .split(thread_status_pane.inner(Margin::new(1, 1)));
+            .split(left_pane).deref().try_into().unwrap();
+        // let [status_pane] = Layout::default()
+        //     .direction(Direction::Vertical)
+        //     .constraints(&[Constraint::Length(4); 124][0..thread_count])
+        //     .split(thread_status_pane.inner(Margin{m:1})).deref().try_into().unwrap();
 
         frame.render_widget(Block::default().borders(Borders::ALL), board_pane);
         frame.render_widget(Block::default().borders(Borders::ALL), prompt_pane);
         frame.render_widget(Block::default().borders(Borders::ALL), right_pane);
         
-        for i in 0..self.thread_stats.len() {
-            App::draw_stat(frame, i, &self.thread_stats[i], status_pane[i]);
-        }
-        frame.render_widget(RawU16Buffer{buf: self.current_board.read().unwrap().d()}, board_pane.inner(Margin::new(1, 1)));
-        frame.render_widget(Block::default().borders(Borders::ALL), prompt_pane);
-        frame.render_widget(*self.prompt.read().unwrap(), prompt_pane.inner(Margin::new(1, 0)));
-        frame.render_widget(FixedLengthString::<64>::new(self.input.read().unwrap().value().as_bytes()), prompt_pane.inner(Margin::new(1, 1)));
+        // for i in 0..self.thread_stats.len() {
+        //     App::draw_stat(frame, i, &self.thread_stats[i], status_pane[i]);
+        // }
+        // frame.render_widget(RawU16Buffer{buf: self.current_board.read().unwrap().d()}, board_pane.inner(Margin{m:1}));
+        // frame.render_widget(Block::default().borders(Borders::ALL), prompt_pane);
+        // frame.render_widget(*self.prompt.read().unwrap(), prompt_pane.inner(Margin{m:1}));
+        // frame.render_widget(FixedLengthString::<64>::new(self.input.read().unwrap().value.deref()), prompt_pane.inner(Margin{m:1}));
 
-        // frame.render_widget(Block::default().borders(Borders::ALL), vertical_panes[1]);
-        // frame.render_widget(Block::default().borders(Borders::ALL), vertical_panes[0]);
+        // // frame.render_widget(Block::default().borders(Borders::ALL), vertical_panes[1]);
+        // // frame.render_widget(Block::default().borders(Borders::ALL), vertical_panes[0]);
 
-        let [eval_queue_stat_pane, reval_queue_stat_pane, board_pieces_pane, positions_evaluated_pane, positions_evaluated_pseudo_pane] = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Length(1), Constraint::Length(1), Constraint::Length(1), Constraint::Length(1), Constraint::Length(1)])
-            .split(global_status_pane).as_ref().try_into().unwrap();
+        // let [eval_queue_stat_pane, reval_queue_stat_pane, board_pieces_pane, positions_evaluated_pane, positions_evaluated_pseudo_pane] = Layout::default()
+        //     .direction(Direction::Vertical)
+        //     .constraints(&[Constraint::Length(1), Constraint::Length(1), Constraint::Length(1), Constraint::Length(1), Constraint::Length(1)])
+        //     .split(global_status_pane).deref();
 
-        let [eval_queue_stat_name_pane, eval_queue_stat_value_pane] = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Fill(1), Constraint::Fill(1)])
-            .split(eval_queue_stat_pane).as_ref().try_into().unwrap();
+        // let [eval_queue_stat_name_pane, eval_queue_stat_value_pane] = *Layout::default()
+        //     .direction(Direction::Horizontal)
+        //     .constraints(&[Constraint::Fill(1), Constraint::Fill(1)])
+        //     .split(*eval_queue_stat_pane).deref();
 
-        let [reval_queue_stat_name_pane, reval_queue_stat_value_pane] = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Fill(1), Constraint::Fill(1)])
-            .split(reval_queue_stat_pane).as_ref().try_into().unwrap();
-        let [board_pieces_name_pane, board_pieces_value_pane] = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(50); 2])
-            .split(board_pieces_pane).as_ref().try_into().unwrap();
-        let [positions_evaluated_name_pane, positions_evaluated_value_pane] = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Length(21), Constraint::Fill(1)])
-            .split(positions_evaluated_pane).as_ref().try_into().unwrap();
-        let [positions_evaluated_pseudo_name_pane, positions_evaluated_pseudo_value_pane] = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(50); 2])
-            .split(positions_evaluated_pseudo_pane).as_ref().try_into().unwrap();
+        // let [reval_queue_stat_name_pane, reval_queue_stat_value_pane] = Layout::default()
+        //     .direction(Direction::Horizontal)
+        //     .constraints(&[Constraint::Fill(1), Constraint::Fill(1)])
+        //     .split(*reval_queue_stat_pane).deref();
+        // let [board_pieces_name_pane, board_pieces_value_pane] = Layout::default()
+        //     .direction(Direction::Horizontal)
+        //     .constraints(&[Constraint::Percentage(50); 2])
+        //     .split(*board_pieces_pane).deref();
+        // let [positions_evaluated_name_pane, positions_evaluated_value_pane] = *Layout::default()
+        //     .direction(Direction::Horizontal)
+        //     .constraints(&[Constraint::Length(21), Constraint::Fill(1)])
+        //     .split(*positions_evaluated_pane).deref();
+        // let [positions_evaluated_pseudo_name_pane, positions_evaluated_pseudo_value_pane] = *Layout::default()
+        //     .direction(Direction::Horizontal)
+        //     .constraints(&[Constraint::Percentage(50); 2])
+        //     .split(*positions_evaluated_pseudo_pane).deref();
 
-        frame.render_widget(RawU8Buffer{buf: [b'R', b'e', b'v', b'a', b'l', b' ', b'Q', b'u', b'e', b'u', b'e', b':']}, reval_queue_stat_name_pane);
-        let mut length = 0;
-        for i in 0..self.thread_stats.len() {
-            let l = self.positions_to_reevaluate.queues[i].length.read().unwrap();
-            length += *l;
-        }
-        frame.render_widget(convert_usize_to_u8_string(length).alignment(Alignment::Right), reval_queue_stat_value_pane);
+        // frame.render_widget(FixedLengthString::<12>::new(&[b'R', b'e', b'v', b'a', b'l', b' ', b'Q', b'u', b'e', b'u', b'e', b':']), reval_queue_stat_name_pane);
+        // let mut length = 0;
+        // for i in 0..self.thread_stats.len() {
+        //     let l = self.positions_to_reevaluate.queues[i].length.read().unwrap();
+        //     length += *l;
+        // }
+        // frame.render_widget(convert_usize_to_u8_string(length).alignment(Alignment::Right), reval_queue_stat_value_pane);
 
-        frame.render_widget(FixedLengthString::<11>::new(&[b'E', b'v', b'a', b'l', b' ', b'Q', b'u', b'e', b'u', b'e', b':']), eval_queue_stat_name_pane);
-        let lengths = self.positions_to_evaluate.lengths();
-        let mut lengths_string = FixedLengthString::<72>::new(&[0; 72]);
-        lengths_string.buf[0] = b'{';
-        let mut i = 0;
-        for length in lengths.iter() {
-            if i > 1 {
-                break
-            }
-            let index_buf = convert_usize_to_u8_string(*length.0);
-            lengths_string.buf[(1+(i*35))..(1+(i*35)+16)].copy_from_slice(&index_buf.buf[0..index_buf.length]);
-            lengths_string.buf[(1+(i*35)+16)] = b':';
-            lengths_string.buf[(1+(i*35)+16+1)] = b' ';
+        // frame.render_widget(FixedLengthString::<11>::new(&[b'E', b'v', b'a', b'l', b' ', b'Q', b'u', b'e', b'u', b'e', b':']), eval_queue_stat_name_pane);
+        // let lengths = self.positions_to_evaluate.lengths();
+        // let mut lengths_string = FixedLengthString::<72>::new(&[0; 72]);
+        // lengths_string.buf[0] = b'{';
+        // let mut i = 0;
+        // for length in lengths.iter() {
+        //     if i > 1 {
+        //         break
+        //     }
+        //     let index_buf = convert_usize_to_u8_string(*length.0);
+        //     lengths_string.buf[(1+(i*35))..(1+(i*35)+16)].copy_from_slice(&index_buf.buf[0..index_buf.length]);
+        //     lengths_string.buf[(1+(i*35)+16)] = b':';
+        //     lengths_string.buf[(1+(i*35)+16+1)] = b' ';
 
-            let length_buf = convert_usize_to_u8_string(*length.1);
-            lengths_string.buf[(1+(i*35)+16+2)..(1+(i*35)+16+2+16)].copy_from_slice(&length_buf.buf[0..length_buf.length]);
-            lengths_string.buf[(1+(i*35)+16+2+16)] = b',';
-            lengths_string.buf[(1+(i*35)+16+2+16+1)] = b' ';
-            i += 1;
-        }
-        lengths_string.buf[71] = b'}';
-        frame.render_widget(lengths_string.alignment(Alignment::Right), eval_queue_stat_value_pane);
-        frame.render_widget(FixedLengthString::<20>::new(&[b'P', b'o', b's', b'i', b't', b'i', b'o', b'n', b's', b' ', b'e', b'v', b'a', b'l', b'u', b'a', b't', b'e', b'd', b':']), positions_evaluated_name_pane);
-        let positions_len = {
-            let mut positions_len = FixedLengthString::<512>::new(&[0; 512]);
-            positions_len.buf[0] = b'{';
-            let lens = self.positions.len();
-            for i in 0..self.positions.length {
-                let index_buf = convert_usize_to_u8_string(i);
-                positions_len.buf[(1+(i*35))..(1+(i*35)+16)].copy_from_slice(&index_buf.buf[0..index_buf.length]);
-                positions_len.buf[(1+(i*35)+16)] = b':';
-                positions_len.buf[(1+(i*35)+16+1)] = b' ';
+        //     let length_buf = convert_usize_to_u8_string(*length.1);
+        //     lengths_string.buf[(1+(i*35)+16+2)..(1+(i*35)+16+2+16)].copy_from_slice(&length_buf.buf[0..length_buf.length]);
+        //     lengths_string.buf[(1+(i*35)+16+2+16)] = b',';
+        //     lengths_string.buf[(1+(i*35)+16+2+16+1)] = b' ';
+        //     i += 1;
+        // }
+        // lengths_string.buf[71] = b'}';
+        // frame.render_widget(lengths_string.alignment(Alignment::Right), eval_queue_stat_value_pane);
+        // frame.render_widget(FixedLengthString::<20>::new(&[b'P', b'o', b's', b'i', b't', b'i', b'o', b'n', b's', b' ', b'e', b'v', b'a', b'l', b'u', b'a', b't', b'e', b'd', b':']), positions_evaluated_name_pane);
+        // let positions_len = {
+        //     let mut positions_len = FixedLengthString::<512>::new(&[0; 512]);
+        //     positions_len.buf[0] = b'{';
+        //     let lens = self.positions.len();
+        //     for i in 0..self.positions.length {
+        //         let index_buf = convert_usize_to_u8_string(i);
+        //         positions_len.buf[(1+(i*35))..(1+(i*35)+16)].copy_from_slice(&index_buf.buf[0..index_buf.length]);
+        //         positions_len.buf[(1+(i*35)+16)] = b':';
+        //         positions_len.buf[(1+(i*35)+16+1)] = b' ';
 
-                let length_buf = convert_usize_to_u8_string(lens[i].1);
-                positions_len.buf[(1+(i*35)+16+2)..(1+(i*35)+16+2+16)].copy_from_slice(&length_buf.buf[0..length_buf.length]);
-                positions_len.buf[(1+(i*35)+16+2+16)] = b',';
-                positions_len.buf[(1+(i*35)+16+2+16+1)] = b' ';
-            }
-            positions_len.buf[(1+(self.positions.length*35))] = b'}';
-            positions_len
-        };
-        frame.render_widget(positions_len.alignment(Alignment::Right), positions_evaluated_value_pane);
-        frame.render_widget(FixedLengthString::<27>::new(&[b'P', b'o', b's', b'i', b't', b'i', b'o', b'n', b's', b' ', b'e', b'v', b'a', b'l', b'u', b'a', b't', b'e', b'd', b' ', b'p', b's', b'e', b'u', b'd', b'o', b':']), positions_evaluated_pseudo_name_pane);
-        frame.render_widget(convert_usize_to_u8_string(*self.positions_evaluated_acount.read().unwrap()).alignment(Alignment::Right), positions_evaluated_pseudo_value_pane);
-        let status = {
-            let mut buf = FixedLengthString::<64>::new(&[b' '; 64]);
-            buf.buf[0..6].copy_from_slice(&[b'T', b'i', b'm', b'e', b':', b' ']);
-            let time = convert_usize_to_u8_string(self.start_time.elapsed().as_secs() as usize);
-            buf.buf[6..6+16].copy_from_slice(&time.buf[0..time.length]);
-            buf.buf[6+16..6+16+16].copy_from_slice(&[b' ', b'E', b'n', b'g', b'i', b'n', b'e', b' ', b's', b't', b'a', b't', b'u', b's', b':', b' ']);
-            let status = { self.status.read().unwrap() };
-            let status = status.as_bytes();
-            buf.buf[6+16+16..6+16+16+status.len()].copy_from_slice(status);
-            buf
-        };
-        frame.render_widget(status, right_pane);
-        self.frame_count = self.frame_count + 1;
+        //         let length_buf = convert_usize_to_u8_string(lens[i].1);
+        //         positions_len.buf[(1+(i*35)+16+2)..(1+(i*35)+16+2+16)].copy_from_slice(&length_buf.buf[0..length_buf.length]);
+        //         positions_len.buf[(1+(i*35)+16+2+16)] = b',';
+        //         positions_len.buf[(1+(i*35)+16+2+16+1)] = b' ';
+        //     }
+        //     positions_len.buf[(1+(self.positions.length*35))] = b'}';
+        //     positions_len
+        // };
+        // frame.render_widget(positions_len.alignment(Alignment::Right), positions_evaluated_value_pane);
+        // frame.render_widget(FixedLengthString::<27>::new(&[b'P', b'o', b's', b'i', b't', b'i', b'o', b'n', b's', b' ', b'e', b'v', b'a', b'l', b'u', b'a', b't', b'e', b'd', b' ', b'p', b's', b'e', b'u', b'd', b'o', b':']), positions_evaluated_pseudo_name_pane);
+        // frame.render_widget(convert_usize_to_u8_string(*self.positions_evaluated_acount.read().unwrap()).alignment(Alignment::Right), positions_evaluated_pseudo_value_pane);
+        // let status = {
+        //     let mut buf = FixedLengthString::<64>::new(&[b' '; 64]);
+        //     buf.buf[0..6].copy_from_slice(&[b'T', b'i', b'm', b'e', b':', b' ']);
+        //     let time = convert_usize_to_u8_string(self.start_time.elapsed().as_secs() as usize);
+        //     buf.buf[6..6+16].copy_from_slice(&time.buf[0..time.length]);
+        //     buf.buf[6+16..6+16+16].copy_from_slice(&[b' ', b'E', b'n', b'g', b'i', b'n', b'e', b' ', b's', b't', b'a', b't', b'u', b's', b':', b' ']);
+        //     let status = { self.status.read().unwrap() };
+        //     let status = status.as_bytes();
+        //     buf.buf[6+16+16..6+16+16+status.len()].copy_from_slice(status);
+        //     buf
+        // };
+        // frame.render_widget(status, right_pane);
+        // self.frame_count = self.frame_count + 1;
     }
 
-    fn draw_stat(frame: &mut Frame, index: usize,thread_stat: &ThreadStat, rect: Rect) {
-        let panes = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(50); 2])
-            .split(rect.inner(Margin::new(1, 1)));
-        let left_bars = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Length(1); 2])
-            .split(panes[0]);
-        let right_bars = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Length(1); 2])
-            .split(panes[1]);
-        frame.render_widget(Block::default().borders(Borders::ALL), rect);
-        let thread_number = {
-            let mut f = FixedLengthString::<24>::new(&[b' '; 24]);
-            f.buf[0..8].copy_from_slice(&[b'T', b'h', b'r', b'e', b'a', b'd', b' ', b'#']);
-            let number = convert_usize_to_u8_string(index);
-            f.buf[8..24].copy_from_slice(&number.buf);
-            f
-        };
-        frame.render_widget(thread_number, rect.inner(Margin::new(1, 0)));
-        // frame.render_widget(Paragraph::new(format!("{}", thread_stat.running_status.read().unwrap())).alignment(Alignment::Right), right_bars[0]);
-        // frame.render_widget(FixedLengthString::<19>::new(&[b'P', b'o', b's', b'i', b't', b'i', b'o', b'n', b's', b' ', b'e', b'v', b'a', b'l', b'u', b'a', b't', b'e', b'd']), left_bars[1]);
-        // frame.render_widget(Paragraph::new(format!("{}", thread_stat.positions_evaluated_length.read().unwrap().separate_with_commas())).alignment(Alignment::Right), right_bars[1]);
-    }
+    // fn draw_stat(frame: &mut Frame, index: usize,thread_stat: &ThreadStat, rect: Rect) {
+    //     let panes = Layout::default()
+    //         .direction(Direction::Horizontal)
+    //         .constraints(&[Constraint::Percentage(50); 2])
+    //         .split(rect.inner(Margin{m:1}));
+    //     let left_bars = Layout::default()
+    //         .direction(Direction::Vertical)
+    //         .constraints(&[Constraint::Length(1); 2])
+    //         .split(panes[0]);
+    //     let right_bars = Layout::default()
+    //         .direction(Direction::Vertical)
+    //         .constraints(&[Constraint::Length(1); 2])
+    //         .split(panes[1]);
+    //     frame.render_widget(Block::default().borders(Borders::ALL), rect);
+    //     let thread_number = {
+    //         let mut f = FixedLengthString::<24>::new(&[b' '; 24]);
+    //         f.buf[0..8].copy_from_slice(&[b'T', b'h', b'r', b'e', b'a', b'd', b' ', b'#']);
+    //         let number = convert_usize_to_u8_string(index);
+    //         f.buf[8..24].copy_from_slice(&number.buf);
+    //         f
+    //     };
+    //     frame.render_widget(thread_number, rect.inner(Margin{m:1}));
+    //     frame.render_widget(FixedLengthString::<5>::new(&match * thread_stat.running_status.read().unwrap() { false => [b'f', b'a', b'l', b's', b'e'], true => [b't', b'r', b'u', b'e', b' '], }).alignment(Alignment::Right), right_bars[0]);
+    //     frame.render_widget(FixedLengthString::<19>::new(&[b'P', b'o', b's', b'i', b't', b'i', b'o', b'n', b's', b' ', b'e', b'v', b'a', b'l', b'u', b'a', b't', b'e', b'd']), left_bars[1]);
+    //     frame.render_widget(convert_usize_to_u8_string(*thread_stat.positions_evaluated_length.read().unwrap()).alignment(Alignment::Right), right_bars[1]);
+    // }
 
     fn process_prompt(&mut self, prune_sender: &Sender<Board>, loop_prune_receiver: &Receiver<()>, reval_sender: &Sender<()>, loop_reval_receiver: &Receiver<()>) {
             let mut current_board = {
@@ -510,156 +510,4 @@ impl ThreadStat {
             running_status: Arc::new(RwLock::new(false)),
         }
     }
-}
-
-struct RawU8Buffer<const N: usize,> {  
-    pub buf: [u8; N]
-}
-
-impl<const N: usize> Widget for RawU8Buffer<N> {
-    fn render(self, area: Rect, buf: &mut ratatui::prelude::Buffer)
-    where
-        Self: Sized {
-            let mut start = 0;
-            let mut index = 0;
-            let mut line = 0;
-            while index < N {
-                if self.buf[index] == b'\n' {
-                    buf.set_string(area.x, area.y + line, std::str::from_utf8(&self.buf[start..index]).unwrap(), Style::new());
-                    line += 1;
-                    index += 1;
-                    start = index;
-                } else {
-                    index += 1;
-                }
-            }
-            if start < N {
-                buf.set_string(area.x, area.y + line, std::str::from_utf8(&self.buf[start..N]).unwrap(), Style::new());
-            }
-    }
-}
-
-struct RawU16Buffer<const N: usize> {  
-    pub buf: [u16; N]
-}
-
-impl<const N: usize> Widget for RawU16Buffer<N> {
-    fn render(self, area: Rect, buf: &mut ratatui::prelude::Buffer)
-    where
-        Self: Sized {
-            let mut sbuf: [u8; 4096] = [0; 4096];
-            let t = convert_to_u8_slice(&self.buf, &mut sbuf);
-            let s = unsafe{std::str::from_utf8_unchecked(&sbuf[0..t])};
-            let mut start = 0;
-            let mut index = 0;
-            let mut line = 0;
-            // let mut i = 0;
-            // let mut line = 0;
-            while index < t {
-                if sbuf[index] == b'\n' {
-                    buf.set_string(area.x, area.y + line, std::str::from_utf8(&sbuf[start..index]).unwrap(), Style::new());
-                    line += 1;
-                    index += 1;
-                    start = index;
-                } else {
-                    index += 1;
-                }
-            }
-            if start < t {
-                buf.set_string(area.x, area.y + line, std::str::from_utf8(&sbuf[start..t]).unwrap(), Style::new());
-            }
-    }
-}
-
-pub fn convert_to_u8(char: u16) -> [u8; 3] {
-	let w = ((char & 0b1111000000000000) >> 12) as u8;
-	let x = ((char & 0b0000111100000000) >> 8) as u8;
-	let y = ((char & 0b0000000011110000) >> 4) as u8;
-	let z = (char & 0b0000000000001111) as u8;
-
-	let byte_1 = 0b11100000 | w;
-	let byte_2 = 0b10000000 | (x << 2) | (y >> 2);
-	let byte_3 = 0b10000000 | ((y << 4) & 0b00110000) | z;
-	return [byte_1, byte_2, byte_3];
-}
-
-pub fn convert_to_u8_slice(src: &[u16], dst: &mut [u8]) -> usize {
-    let mut index = 0;
-    for i in src {
-        if i & 0xFF00 == 0x0000 {
-            dst[index] = (i & 0x00FF) as u8;
-            index += 1;
-        } else {
-            dst[index..index+3].copy_from_slice(&convert_to_u8(*i));
-            index +=3;
-        }
-    }
-    return index;
-}
-
-#[derive(Clone, Copy)]
-struct FixedLengthString<const N: usize> {
-    buf: [u8; N],
-    length: usize,
-    alignment: Alignment,
-}
-
-impl<const N: usize> FixedLengthString<N> {
-    fn new(src: &[u8]) -> Self {
-        let mut buf = [0; N];
-        buf[0..src.len()].copy_from_slice(src);
-        FixedLengthString { buf, length: src.len(), alignment: Alignment::Left }
-    }
-
-    fn alignment(self: Self, alignment: Alignment) -> Self {
-        FixedLengthString { buf: self.buf, length: self.length, alignment: alignment }
-    }
-}
-
-impl<const N: usize> AsRef<str> for FixedLengthString<N> {
-    fn as_ref(&self) -> &str {
-        std::str::from_utf8(&self.buf[0..self.length]).unwrap()
-    }
-}
-
-impl<const N: usize> Widget for FixedLengthString<N> {
-    fn render(self, area: Rect, buf: &mut ratatui::prelude::Buffer)
-    where
-        Self: Sized {
-            buf.set_string(area.x, area.y, std::str::from_utf8(&self.buf[0..self.length]).unwrap(), Style::new());
-    }
-}
-
-pub fn convert_4bit_to_hex_char(val: u8) -> u8 {
-    match val {
-        0x0 => b'0',
-        0x1 => b'1',
-        0x2 => b'2',
-        0x3 => b'3',
-        0x4 => b'4',
-        0x5 => b'5',
-        0x6 => b'6',
-        0x7 => b'7',
-        0x8 => b'8',
-        0x9 => b'9',
-        0xa => b'a',
-        0xb => b'b',
-        0xc => b'c',
-        0xd => b'd',
-        0xe => b'e',
-        0xf => b'f',
-        _ => panic!("Invalid"),
-    }
-}
-
-pub fn convert_usize_to_u8_string(val: usize) -> FixedLengthString<16> {
-    let size = size_of::<usize>();
-    let mut string = [0; 32];
-    let high_mask: u8 = 0xf0;
-    let low_mask = 0x0f;
-    for i in 0..size {
-        string[i] = convert_4bit_to_hex_char(((val >> size-i-1) as u8 & high_mask) >> 4);
-        string[i+1] = convert_4bit_to_hex_char((val >> size-i-1) as u8 & low_mask);
-    }
-    FixedLengthString::new(&string[0..size*2])
 }

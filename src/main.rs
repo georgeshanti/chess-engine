@@ -5,16 +5,18 @@ static GLOBAL: CustomAlloc<System> = CustomAlloc{allocator: System{}};
 
 mod core;
 
-use std::{alloc::System, os::unix::thread, ptr};
+use std::{alloc::System, io::{Write, stdout}, os::unix::thread, ptr, thread::sleep, time::Duration};
 
-use crate::core::{app::{App, convert_to_u8, convert_to_u8_slice}, chess::{board::{Board, BoardArrangement}, initial_board::INITIAL_BOARD, piece::char}, engine::reevaluation_engine::{move_board, move_board_arrangement}, log::FILENAME, mem::alloc::{CustomAlloc, convert_to_hex}, structs::queue::Queue};
+
+use crossterm::{ExecutableCommand, QueueableCommand, terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode}};
+
+use crate::core::{app::App, chess::{board::{Board, BoardArrangement}, initial_board::INITIAL_BOARD, piece::char}, draw::Frame, engine::reevaluation_engine::{move_board, move_board_arrangement}, log::FILENAME, mem::alloc::{CustomAlloc, convert_to_hex, wait}, structs::queue::Queue};
+
+// fn draw(frame: &mut Frame) {
+//     frame.render_widget(, frame.area());
+// }
 
 fn main() {
-    // let mut sbuf: [u8; 4096] = [0; 4096];
-    // let t = convert_to_u8_slice(&INITIAL_BOARD.d(), &mut sbuf);
-    // let s = unsafe{std::str::from_utf8_unchecked(&sbuf[0..t])};
-    // println!("{}", s);
-    // return;
 
     unsafe {
         let f = format!("logs/{}.log", chrono::Local::now().format("%Y-%m-%d_%H-%M-%S").to_string());
@@ -45,6 +47,19 @@ fn main() {
         *move_board.write().unwrap() = board;
     }
 
+    let mut stdout = stdout();
+    enable_raw_mode();
+    stdout.execute(EnterAlternateScreen);
+
+    let mut app = App::new(14, 2);
+    let mut frame = Frame::new();
+    app.draw(&mut frame);
+    stdout.flush();
+    std::thread::sleep(Duration::from_millis(5000));
+    stdout.execute(LeaveAlternateScreen);
+    disable_raw_mode();
+    return;
+
 
     // let init = [INITIAL_BOARD; 1];
     // let q: Queue<Board, 10> = Queue::new();
@@ -58,13 +73,13 @@ fn main() {
     // scratch();
     // return;
 
-    log!("Hello, world!");
-    let thread_count = std::thread::available_parallelism().unwrap().get();
-    // let thread_count = 6;
-    let computer_count = 6;
-    let queuer_count = 1;
-    let mut app = App::new(14, 2);
+    // log!("Hello, world!");
+    // let thread_count = std::thread::available_parallelism().unwrap().get();
+    // // let thread_count = 6;
+    // let computer_count = 6;
+    // let queuer_count = 1;
+    // let mut app = App::new(14, 2);
 
-    let _ = app.run();
-    ratatui::restore();
+    // let _ = app.run();
+    // ratatui::restore();
 }
