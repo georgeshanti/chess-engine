@@ -12,52 +12,57 @@ pub struct CustomAlloc<T: GlobalAlloc> {
     pub allocator: T
 }
 
+const LOG_MEMORY: bool = false;
+
 unsafe impl<T: GlobalAlloc> GlobalAlloc for CustomAlloc<T> {
     unsafe fn alloc(&self, layout: std::alloc::Layout) -> *mut u8 {
         let ptr = unsafe { self.allocator.alloc(layout) };
 
-        let mut file = std::fs::OpenOptions::new()
-        .write(true)
-        .append(true)
-        .create(true)
-        .open("./logs/mem/log.txt")
-        .unwrap();
-        let mut line: [u8; LINE_SIZE] = [0; LINE_SIZE];
-        line[0..9].copy_from_slice("Alloc: 0x".as_bytes());
-        line[ADDRESS_VALUE_OFFSET..ALIGN_LABEL_OFFSET].copy_from_slice(&convert_to_hex(ptr as usize));
+        if LOG_MEMORY {
+            let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .append(true)
+            .create(true)
+            .open("./logs/mem/log.txt")
+            .unwrap();
+            let mut line: [u8; LINE_SIZE] = [0; LINE_SIZE];
+            line[0..9].copy_from_slice("Alloc: 0x".as_bytes());
+            line[ADDRESS_VALUE_OFFSET..ALIGN_LABEL_OFFSET].copy_from_slice(&convert_to_hex(ptr as usize));
 
-        line[ALIGN_LABEL_OFFSET..ALIGN_VALUE_OFFSET].copy_from_slice(" align: 0x".as_bytes());
-        line[ALIGN_VALUE_OFFSET..SIZE_LABEL_OFFSET].copy_from_slice(&convert_to_hex(layout.align()));
+            line[ALIGN_LABEL_OFFSET..ALIGN_VALUE_OFFSET].copy_from_slice(" align: 0x".as_bytes());
+            line[ALIGN_VALUE_OFFSET..SIZE_LABEL_OFFSET].copy_from_slice(&convert_to_hex(layout.align()));
 
-        line[SIZE_LABEL_OFFSET..SIZE_VALUE_OFFSET].copy_from_slice(" size: 0x".as_bytes());
-        line[SIZE_VALUE_OFFSET..LINE_SIZE-1].copy_from_slice(&convert_to_hex(layout.size()));
-        line[LINE_SIZE-1] = b'\n';
+            line[SIZE_LABEL_OFFSET..SIZE_VALUE_OFFSET].copy_from_slice(" size: 0x".as_bytes());
+            line[SIZE_VALUE_OFFSET..LINE_SIZE-1].copy_from_slice(&convert_to_hex(layout.size()));
+            line[LINE_SIZE-1] = b'\n';
 
-        std::io::Write::write(&mut file, &line).unwrap();
-        wait(Duration::from_millis(100));
+            std::io::Write::write(&mut file, &line).unwrap();
+            wait(Duration::from_millis(100));
+        }
         ptr
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: std::alloc::Layout) {
+        if LOG_MEMORY {
+            let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .append(true)
+            .create(true)
+            .open("./logs/mem/log.txt")
+            .unwrap();
+            let mut line: [u8; LINE_SIZE] = [0; LINE_SIZE];
+            line[0..9].copy_from_slice("Dlloc: 0x".as_bytes());
+            line[ADDRESS_VALUE_OFFSET..ALIGN_LABEL_OFFSET].copy_from_slice(&convert_to_hex(ptr as usize));
 
-        let mut file = std::fs::OpenOptions::new()
-        .write(true)
-        .append(true)
-        .create(true)
-        .open("./logs/mem/log.txt")
-        .unwrap();
-        let mut line: [u8; LINE_SIZE] = [0; LINE_SIZE];
-        line[0..9].copy_from_slice("Dlloc: 0x".as_bytes());
-        line[ADDRESS_VALUE_OFFSET..ALIGN_LABEL_OFFSET].copy_from_slice(&convert_to_hex(ptr as usize));
+            line[ALIGN_LABEL_OFFSET..ALIGN_VALUE_OFFSET].copy_from_slice(" align: 0x".as_bytes());
+            line[ALIGN_VALUE_OFFSET..SIZE_LABEL_OFFSET].copy_from_slice(&convert_to_hex(layout.align()));
 
-        line[ALIGN_LABEL_OFFSET..ALIGN_VALUE_OFFSET].copy_from_slice(" align: 0x".as_bytes());
-        line[ALIGN_VALUE_OFFSET..SIZE_LABEL_OFFSET].copy_from_slice(&convert_to_hex(layout.align()));
+            line[SIZE_LABEL_OFFSET..SIZE_VALUE_OFFSET].copy_from_slice(" size: 0x".as_bytes());
+            line[SIZE_VALUE_OFFSET..LINE_SIZE-1].copy_from_slice(&convert_to_hex(layout.size()));
+            line[LINE_SIZE-1] = b'\n';
 
-        line[SIZE_LABEL_OFFSET..SIZE_VALUE_OFFSET].copy_from_slice(" size: 0x".as_bytes());
-        line[SIZE_VALUE_OFFSET..LINE_SIZE-1].copy_from_slice(&convert_to_hex(layout.size()));
-        line[LINE_SIZE-1] = b'\n';
-
-        std::io::Write::write(&mut file, &line).unwrap();
+            std::io::Write::write(&mut file, &line).unwrap();
+        }
         unsafe { self.allocator.dealloc(ptr, layout) }
     }
 }

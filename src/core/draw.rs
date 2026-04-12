@@ -1,4 +1,4 @@
-use std::{io::{Stdout, Write, stdout}, rc::Rc};
+use std::{io::{BufWriter, Stdout, Write, stdout}, rc::Rc};
 
 use array_builder::ArrayBuilder;
 use crossterm::{Command, QueueableCommand, cursor::MoveTo, event::Event, terminal::size};
@@ -8,7 +8,7 @@ use crate::{core::log, log};
 pub struct Frame {
     width: u16,
     height: u16,
-    stdout: Stdout,
+    pub stdout: BufWriter<Stdout>,
 }
 
 impl Frame {
@@ -17,7 +17,7 @@ impl Frame {
         Frame {
             width: size.0,
             height: size.1,
-            stdout: stdout(),
+            stdout: BufWriter::with_capacity((size.0*size.1*16) as usize, stdout()),
         }
     }
 
@@ -94,7 +94,10 @@ impl Layout {
         if fillable_rects > 0 {
             fillable_space = fillable_space / fillable_rects;
         }
-        let mut start = 0;
+        let mut start = match self.direction {
+            Direction::Horizontal => rect.x,
+            Direction::Vertical => rect.y,
+        };
         for constraint in self.constraints.iter() {
             rects.push(match self.direction {
                 Direction::Horizontal => {
@@ -137,7 +140,7 @@ pub struct Margin {
     pub m: u16
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct Rect {
     x: u16,
     y: u16,
@@ -157,7 +160,7 @@ impl Rect {
 }
 
 pub trait Widget {
-    fn render(&self, stdout: &mut Stdout, rect: Rect);
+    fn render(&self, stdout: &mut impl Write, rect: Rect);
 }
 
 pub trait Renderer<T: Widget> {
@@ -207,7 +210,7 @@ impl Block {
 }
 
 impl Widget for Block {
-    fn render(&self, stdout: &mut Stdout, rect: Rect) {
+    fn render(&self, stdout: &mut impl Write, rect: Rect) {
         stdout.queue(MoveTo(rect.x, rect.y));
 
         let mut horizontal_bar: [u16; 512] = [0x2500; 512];
@@ -280,29 +283,30 @@ pub struct RawU16Buffer<const N: usize> {
 }
 
 impl<const N: usize> Widget for RawU16Buffer<N> {
-    fn render(&self, stdout: &mut Stdout, rect: Rect) {
-        panic!();
-            // let mut sbuf: [u8; 4096] = [0; 4096];
-            // let t = convert_to_u8_slice(&self.buf, &mut sbuf);
-            // let s = unsafe{std::str::from_utf8_unchecked(&sbuf[0..t])};
-            // let mut start = 0;
-            // let mut index = 0;
+    fn render(&self, stdout: &mut impl Write, rect: Rect) {
+            let mut sbuf: [u8; 4096] = [0; 4096];
+            let t = convert_to_u8_slice(&self.buf, &mut sbuf);
+            let s = unsafe{std::str::from_utf8_unchecked(&sbuf[0..t])};
+            let mut start = 0;
+            let mut index = 0;
+            let mut line = 0;
+            // let mut i = 0;
             // let mut line = 0;
-            // // let mut i = 0;
-            // // let mut line = 0;
-            // while index < t {
-            //     if sbuf[index] == b'\n' {
-            //         buf.set_string(rect.x, rect.y + line, std::str::from_utf8(&sbuf[start..index]).unwrap(), Style::new());
-            //         line += 1;
-            //         index += 1;
-            //         start = index;
-            //     } else {
-            //         index += 1;
-            //     }
-            // }
-            // if start < t {
-            //     buf.set_string(rect.x, rect.y + line, std::str::from_utf8(&sbuf[start..t]).unwrap(), Style::new());
-            // }
+            while index < t {
+                if sbuf[index] == b'\n' {
+                    stdout.queue(MoveTo(rect.x, rect.y + line));
+                    stdout.write(&sbuf[start..index]);
+                    line += 1;
+                    index += 1;
+                    start = index;
+                } else {
+                    index += 1;
+                }
+            }
+            if start < t {
+                stdout.queue(MoveTo(rect.x, rect.y + line));
+                stdout.write(&sbuf[start..t]);
+            }
     }
 }
 
@@ -364,11 +368,12 @@ impl<const N: usize> AsRef<str> for FixedLengthString<N> {
 }
 
 impl<const N: usize> Widget for FixedLengthString<N> {
-    fn render(&self, stdout: &mut Stdout, rect: Rect)
+    fn render(&self, stdout: &mut impl Write, rect: Rect)
     where
         Self: Sized {
-        panic!();
-            // buf.set_string(area.x, area.y, std::str::from_utf8(&self.buf[0..self.length]).unwrap(), Style::new());
+            log!("x: {}, y:{}", rect.x, rect.y);
+            stdout.queue(MoveTo(rect.x, rect.y));
+            stdout.write(&self.buf[0..self.length]);
     }
 }
 
