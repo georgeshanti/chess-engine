@@ -10,7 +10,7 @@ use std::{alloc::System, collections::BTreeMap, io::{Write, stdout}, ops::Deref,
 
 use crossterm::{ExecutableCommand, QueueableCommand, terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode}};
 
-use crate::core::{app::App, chess::{board::{Board, BoardArrangement}, board_state::BoardState, initial_board::INITIAL_BOARD, piece::char}, draw::{Block, Borders, Constraint, Direction, Frame, Layout, Margin}, log::FILENAME, mem::alloc::{CustomAlloc, convert_to_hex, wait}, structs::queue::Queue};
+use crate::core::{app::App, chess::{board::{Board, BoardArrangement}, board_state::BoardState, initial_board::INITIAL_BOARD, piece::char}, draw::{Block, Borders, Constraint, Direction, Frame, Layout, Margin, convert_usize_to_u8_string}, log::FILENAME, mem::alloc::{CustomAlloc, convert_to_hex, wait}, structs::queue::Queue};
 
 // fn draw(frame: &mut Frame) {
 //     frame.render_widget(, frame.area());
@@ -19,6 +19,8 @@ use crate::core::{app::App, chess::{board::{Board, BoardArrangement}, board_stat
 fn main() {
     // let t = Arc::new(RwLock::new(5));
     // let t = Arc::new(BTreeMap::<usize, usize>::new());
+    // let t = convert_usize_to_u8_string(723);
+    // println!("{}", std::str::from_utf8(&t.buf[0..t.length]).unwrap());
     // return;
 
     unsafe {
@@ -78,7 +80,7 @@ fn main() {
     // scratch();
     // return;
     let mut app = App::new(14, 2);
-
+    println!("Done");
     let _ = app.run();
-    ratatui::restore();
+    // ratatui::restore();
 }

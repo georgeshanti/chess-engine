@@ -2,6 +2,7 @@ use std::{io::{BufWriter, Stdout, Write, stdout}, rc::Rc};
 
 use array_builder::ArrayBuilder;
 use crossterm::{Command, QueueableCommand, cursor::MoveTo, event::Event, terminal::size};
+use nobcd::BcdNumber;
 
 use crate::{core::log, log};
 
@@ -144,7 +145,7 @@ pub struct Margin {
 pub struct Rect {
     x: u16,
     y: u16,
-    width: u16,
+    pub width: u16,
     height: u16,
 }
 
@@ -350,6 +351,18 @@ impl<const N: usize> FixedLengthString<N> {
         FixedLengthString { buf, length: src.len(), alignment: Alignment::Left }
     }
 
+    pub fn add<const T: usize>(&mut self, new: FixedLengthString<T>) {
+        let len = new.length;
+        self.buf[self.length..(self.length+len)].copy_from_slice(&new.buf[0..len]);
+        self.length += len;
+    }
+
+    pub fn add_u8(&mut self, new: &[u8]) {
+        let len = new.len();
+        self.buf[self.length..(self.length+len)].copy_from_slice(new);
+        self.length += len;
+    }
+
     pub fn alignment(self: Self, alignment: Alignment) -> Self {
         FixedLengthString { buf: self.buf, length: self.length, alignment: alignment }
     }
@@ -371,9 +384,36 @@ impl<const N: usize> Widget for FixedLengthString<N> {
     fn render(&self, stdout: &mut impl Write, rect: Rect)
     where
         Self: Sized {
-            log!("x: {}, y:{}", rect.x, rect.y);
             stdout.queue(MoveTo(rect.x, rect.y));
-            stdout.write(&self.buf[0..self.length]);
+            // stdout.write(&self.buf[0..self.length]);
+            let mut left = 0;
+            let mut chars = 0;
+            let mut line = 0;
+            for i in 0..self.length {
+                let c = self.buf[i];
+                if left > 0 {
+                    left -= 1;
+                    if left == 0 {
+                        chars += 1;
+                    }
+                } else {
+                    if (c & 0b11111000) == 0b11110000 {
+                        left = 3;
+                    } else if (c & 0b11110000) == 0b11100000 {
+                        left = 2;
+                    } else if (c & 0b11100000) == 0b11000000 {
+                        left = 1;
+                    } else {
+                        chars += 1;
+                    }
+                }
+                stdout.write(&[c]);
+                if chars == rect.width {
+                    chars = 0;
+                    line += 1;
+                    stdout.queue(MoveTo(rect.x, rect.y + line));
+                }
+            }
     }
 }
 
@@ -399,14 +439,22 @@ pub fn convert_4bit_to_hex_char(val: u8) -> u8 {
     }
 }
 
-pub fn convert_usize_to_u8_string(val: usize) -> FixedLengthString<16> {
-    let size = size_of::<usize>();
-    let mut string = [0; 32];
-    let high_mask: u8 = 0xf0;
-    let low_mask = 0x0f;
-    for i in 0..size {
-        string[i] = convert_4bit_to_hex_char(((val >> size-i-1) as u8 & high_mask) >> 4);
-        string[i+1] = convert_4bit_to_hex_char((val >> size-i-1) as u8 & low_mask);
+pub fn convert_usize_to_u8_string(val: usize) -> FixedLengthString<38> {
+    if val == 0 {
+        return FixedLengthString::new(&[b'0']);
     }
-    FixedLengthString::new(&string[0..size*2])
+    let num = BcdNumber::<19>::new(val).unwrap().bcd_bytes();
+    let mut buf = [0; 38];
+    for i in 0.. 19 {
+        buf[(2*i)+1] = convert_4bit_to_hex_char(num[i] & 0b00001111);
+        buf[(2*i)] = convert_4bit_to_hex_char((num[i] >> 4) & 0b00001111);
+    }
+    let mut start = 0;
+    for i in 0..38 {
+        if buf[i]!=b'0' {
+            start = i;
+            break;
+        }
+    }
+    FixedLengthString::new(&buf[start..38])
 }

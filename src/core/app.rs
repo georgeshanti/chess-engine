@@ -27,7 +27,7 @@ pub struct App {
     pub editing: Arc<RwLock<bool>>,
     pub prompt: Arc<RwLock<FixedLengthString<64>>>,
     pub start_time: std::time::Instant,
-    pub status: Arc<RwLock<String>>,
+    pub status: Arc<RwLock<FixedLengthString<64>>>,
     pub current_depth: Arc<RwLock<usize>>,
     pub waiter: LockWaiter,
 }
@@ -53,7 +53,7 @@ impl App {
             editing: Arc::new(RwLock::new(true)),
             prompt: Arc::new(RwLock::new(prompt)),
             start_time: std::time::Instant::now(),
-            status: Arc::new(RwLock::new(String::from("Evaluating..."))),
+            status: Arc::new(RwLock::new(FixedLengthString::new(b"Evaluating..."))),
             current_depth: depth,
             waiter: waiter,
         };
@@ -160,12 +160,10 @@ impl App {
                 Constraint::Percentage(50),
             ])
             .split(frame.area()).deref().try_into().unwrap();
-        log!("right_pane: {:?}", right_pane);
         let [global_status_pane, thread_status_pane] = Layout::default()
             .direction(Direction::Vertical)
-            .constraints(&[Constraint::Length(5), Constraint::Fill(1)])
+            .constraints(&[Constraint::Length(7), Constraint::Fill(1)])
             .split(right_pane.inner(Margin{m: 1})).deref().try_into().unwrap();
-        log!("global_status_pane: {:?}", global_status_pane);
         let [board_pane, prompt_pane] = Layout::default()
             .direction(Direction::Vertical)
             .constraints(&[
@@ -195,15 +193,13 @@ impl App {
 
         let [eval_queue_stat_pane, reval_queue_stat_pane, board_pieces_pane, positions_evaluated_pane, positions_evaluated_pseudo_pane] = Layout::default()
             .direction(Direction::Vertical)
-            .constraints(&[Constraint::Length(1), Constraint::Length(1), Constraint::Length(1), Constraint::Length(2), Constraint::Length(1)])
+            .constraints(&[Constraint::Length(1), Constraint::Length(1), Constraint::Length(1), Constraint::Length(4), Constraint::Length(1)])
             .split(global_status_pane).deref().try_into().unwrap();
-        log!("eval_queue_stat_pane: {:?}", eval_queue_stat_pane);
 
         let [eval_queue_stat_name_pane, eval_queue_stat_value_pane] = Layout::default()
             .direction(Direction::Horizontal)
             .constraints(&[Constraint::Fill(1), Constraint::Fill(1)])
             .split(eval_queue_stat_pane).deref().try_into().unwrap();
-        log!("eval_queue_stat_name_pane: {:?}", eval_queue_stat_name_pane);
         frame.render_widget(FixedLengthString::<11>::new(&[b'E', b'v', b'a', b'l', b' ', b'Q', b'u', b'e', b'u', b'e', b':']), eval_queue_stat_name_pane);
 
         let [reval_queue_stat_name_pane, reval_queue_stat_value_pane] = Layout::default()
@@ -216,7 +212,7 @@ impl App {
             .split(board_pieces_pane).deref().try_into().unwrap();
         let [positions_evaluated_name_pane, positions_evaluated_value_pane] = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints(&[Constraint::Length(21), Constraint::Fill(1)])
+            .constraints(&[Constraint::Length(22), Constraint::Fill(1)])
             .split(positions_evaluated_pane).deref().try_into().unwrap();
         let [positions_evaluated_pseudo_name_pane, positions_evaluated_pseudo_value_pane] = Layout::default()
             .direction(Direction::Horizontal)
@@ -232,57 +228,55 @@ impl App {
         frame.render_widget(convert_usize_to_u8_string(length).alignment(Alignment::Right), reval_queue_stat_value_pane);
 
         let lengths = self.positions_to_evaluate.lengths();
-        let mut lengths_string = FixedLengthString::<72>::new(&[0; 72]);
-        lengths_string.buf[0] = b'{';
+        let mut lengths_string = FixedLengthString::<86>::new(&[0; 0]);
+        lengths_string.add(FixedLengthString::<1>::new(&[b'{']));
         let mut i = 0;
         for length in lengths.iter() {
             if i > 1 {
                 break
             }
             let index_buf = convert_usize_to_u8_string(*length.0);
-            lengths_string.buf[(1+(i*35))..(1+(i*35)+16)].copy_from_slice(&index_buf.buf[0..index_buf.length]);
-            lengths_string.buf[(1+(i*35)+16)] = b':';
-            lengths_string.buf[(1+(i*35)+16+1)] = b' ';
+            lengths_string.add(index_buf);
+            lengths_string.add(FixedLengthString::<1>::new(&[b':']));
+            lengths_string.add(FixedLengthString::<1>::new(&[b' ']));
 
             let length_buf = convert_usize_to_u8_string(*length.1);
-            lengths_string.buf[(1+(i*35)+16+2)..(1+(i*35)+16+2+16)].copy_from_slice(&length_buf.buf[0..length_buf.length]);
-            lengths_string.buf[(1+(i*35)+16+2+16)] = b',';
-            lengths_string.buf[(1+(i*35)+16+2+16+1)] = b' ';
+            lengths_string.add(length_buf);
+            lengths_string.add(FixedLengthString::<1>::new(&[b',']));
+            lengths_string.add(FixedLengthString::<1>::new(&[b' ']));
             i += 1;
         }
-        lengths_string.buf[71] = b'}';
+        lengths_string.add_u8(&[b'}']);
         frame.render_widget(lengths_string.alignment(Alignment::Right), eval_queue_stat_value_pane);
         frame.render_widget(FixedLengthString::<20>::new(&[b'P', b'o', b's', b'i', b't', b'i', b'o', b'n', b's', b' ', b'e', b'v', b'a', b'l', b'u', b'a', b't', b'e', b'd', b':']), positions_evaluated_name_pane);
         let positions_len = {
-            let mut positions_len = FixedLengthString::<512>::new(&[0; 512]);
-            positions_len.buf[0] = b'{';
+            let mut positions_len = FixedLengthString::<512>::new(&[0; 0]);
+            positions_len.add_u8(&[b'{']);
             let lens = self.positions.len();
             for i in 0..self.positions.length {
                 let index_buf = convert_usize_to_u8_string(i);
-                positions_len.buf[(1+(i*35))..(1+(i*35)+16)].copy_from_slice(&index_buf.buf[0..index_buf.length]);
-                positions_len.buf[(1+(i*35)+16)] = b':';
-                positions_len.buf[(1+(i*35)+16+1)] = b' ';
+                positions_len.add(index_buf);
+                positions_len.add_u8(&[b':']);
+                positions_len.add_u8(&[b' ']);
 
                 let length_buf = convert_usize_to_u8_string(lens[i].1);
-                positions_len.buf[(1+(i*35)+16+2)..(1+(i*35)+16+2+16)].copy_from_slice(&length_buf.buf[0..length_buf.length]);
-                positions_len.buf[(1+(i*35)+16+2+16)] = b',';
-                positions_len.buf[(1+(i*35)+16+2+16+1)] = b' ';
+                positions_len.add(length_buf);
+                positions_len.add_u8(&[b',']);
+                positions_len.add_u8(&[b' ']);
             }
-            positions_len.buf[(1+(self.positions.length*35))] = b'}';
+            positions_len.add_u8(&[b'}']);
             positions_len
         };
         frame.render_widget(positions_len.alignment(Alignment::Right), positions_evaluated_value_pane);
         frame.render_widget(FixedLengthString::<27>::new(&[b'P', b'o', b's', b'i', b't', b'i', b'o', b'n', b's', b' ', b'e', b'v', b'a', b'l', b'u', b'a', b't', b'e', b'd', b' ', b'p', b's', b'e', b'u', b'd', b'o', b':']), positions_evaluated_pseudo_name_pane);
         frame.render_widget(convert_usize_to_u8_string(*self.positions_evaluated_acount.read().unwrap()).alignment(Alignment::Right), positions_evaluated_pseudo_value_pane);
         let status = {
-            let mut buf = FixedLengthString::<64>::new(&[b' '; 64]);
-            buf.buf[0..6].copy_from_slice(&[b'T', b'i', b'm', b'e', b':', b' ']);
-            let time = convert_usize_to_u8_string(self.start_time.elapsed().as_secs() as usize);
-            buf.buf[6..6+16].copy_from_slice(&time.buf[0..time.length]);
-            buf.buf[6+16..6+16+16].copy_from_slice(&[b' ', b'E', b'n', b'g', b'i', b'n', b'e', b' ', b's', b't', b'a', b't', b'u', b's', b':', b' ']);
-            let status = { self.status.read().unwrap() };
-            let status = status.as_bytes();
-            buf.buf[6+16+16..6+16+16+status.len()].copy_from_slice(status);
+            let mut buf = FixedLengthString::<64>::new(&[b' '; 0]);
+            buf.add_u8(&[b'T', b'i', b'm', b'e', b':', b' ']);
+            buf.add(convert_usize_to_u8_string(self.start_time.elapsed().as_secs() as usize));
+            buf.add_u8(&[b' ', b'E', b'n', b'g', b'i', b'n', b'e', b' ', b's', b't', b'a', b't', b'u', b's', b':', b' ']);
+            let status = { *self.status.read().unwrap() };
+            buf.add(status);
             buf
         };
         frame.render_widget(status, right_pane);
@@ -304,10 +298,10 @@ impl App {
             .split(panes[1]);
         frame.render_widget(Block::default().borders(Borders::ALL), rect);
         let thread_number = {
-            let mut f = FixedLengthString::<24>::new(&[b' '; 24]);
+            let mut f = FixedLengthString::<46>::new(&[b' '; 24]);
             f.buf[0..8].copy_from_slice(&[b'T', b'h', b'r', b'e', b'a', b'd', b' ', b'#']);
             let number = convert_usize_to_u8_string(index);
-            f.buf[8..24].copy_from_slice(&number.buf);
+            f.buf[8..46].copy_from_slice(&number.buf);
             f
         };
         frame.render_widget(thread_number, rect.inner(Margin{m:1}));
@@ -418,7 +412,7 @@ impl App {
             log!("Pruned and re-evaluated in {}s", start_time.elapsed().as_secs());
             {
                 let app = app.clone();
-                *app.status.write().unwrap() = String::from("Evaluating...");
+                *app.status.write().unwrap() = FixedLengthString::new(b"Evaluating...");
             }
             {
                 let mut input = self.input.write().unwrap();

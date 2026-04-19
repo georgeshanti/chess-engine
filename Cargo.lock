@@ -89,6 +89,7 @@ dependencies = [
  "chrono",
  "crossterm 0.29.0",
  "humantime",
+ "nobcd",
  "ratatui",
  "regex",
  "serde",
@@ -449,6 +450,15 @@ dependencies = [
  "log",
  "wasi",
  "windows-sys 0.59.0",
+]
+
+[[package]]
+name = "nobcd"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2ed1615ad585d0265b0b29c1ade3ac73aba6b0e23dffbcec43bd7b4817f94bf3"
+dependencies = [
+ "num-traits",
 ]
 
 [[package]]

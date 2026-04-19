@@ -1,6 +1,6 @@
 use std::{cmp::Ordering, sync::{RwLock, mpsc::{self, Receiver, Sender}}, thread::sleep, time::{Duration, Instant}};
 
-use crate::{core::{app::App, chess::{board::{Board, BoardArrangement}, board_state::{Evaluation, NextBestMove}}, engine::structs::{PositionToReevaluate, PositionsToReevaluate}, structs::map::{GroupedPositions, Positions}}, log};
+use crate::{core::{app::App, chess::{board::{Board, BoardArrangement}, board_state::{Evaluation, NextBestMove}}, draw::FixedLengthString, engine::structs::{PositionToReevaluate, PositionsToReevaluate}, structs::map::{GroupedPositions, Positions}}, log};
 use std::sync::LazyLock;
 
 pub static move_board: LazyLock<RwLock<Board>> = LazyLock::new(|| RwLock::new(Board::new()));
@@ -25,7 +25,7 @@ pub fn reevaluation_engine(app: App, receiver: Receiver<()>, sender: Sender<()>)
         let _ = receiver.recv().unwrap();
         {
             let app = app.clone();
-            *app.status.write().unwrap() = String::from("Re-evaluating positions...");
+            *app.status.write().unwrap() = FixedLengthString::new(b"Re-evaluating positions...");
         }
         for (thread_tx, _) in wakers.iter() {
             thread_tx.send(()).unwrap();
