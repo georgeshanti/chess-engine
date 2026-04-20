@@ -10,7 +10,7 @@ use std::{alloc::System, collections::BTreeMap, io::{Write, stdout}, ops::Deref,
 
 use crossterm::{ExecutableCommand, QueueableCommand, terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode}};
 
-use crate::core::{app::App, chess::{board::{Board, BoardArrangement}, board_state::BoardState, initial_board::INITIAL_BOARD, piece::char}, draw::{Block, Borders, Constraint, Direction, Frame, Layout, Margin, convert_usize_to_u8_string}, log::FILENAME, mem::alloc::{CustomAlloc, convert_to_hex, wait}, structs::queue::Queue};
+use crate::core::{app::{App, run}, chess::{board::{Board, BoardArrangement}, board_state::BoardState, initial_board::INITIAL_BOARD, piece::char}, draw::{Block, Borders, Constraint, Direction, Frame, Layout, Margin, convert_usize_to_u8_string}, log::FILENAME, mem::alloc::{CustomAlloc, convert_to_hex, wait}, structs::queue::Queue};
 
 // fn draw(frame: &mut Frame) {
 //     frame.render_widget(, frame.area());
@@ -79,8 +79,8 @@ fn main() {
 
     // scratch();
     // return;
-    let mut app = App::new(14, 2);
+    let mut app = Arc::new(App::new(14, 2));
     println!("Done");
-    let _ = app.run();
+    // let _ = run(app);
     // ratatui::restore();
 }

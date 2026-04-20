@@ -7,7 +7,7 @@ use ratatui::layout::Position;
 use crate::{App, core::{chess::board::{Board, can_come_after_board_arrangement}, engine::{reevaluation_engine::move_board, structs::{PositionToEvaluate, PositionToReevaluate, TimestampedEvaluation}}, structs::map::Presence}, log};
 pub static TIMED: RwLock<bool> = RwLock::new(false);
 
-pub fn evaluation_engine(index: usize, run_lock: Arc<RwLock<()>>, app: App) {
+pub fn evaluation_engine(index: usize, app: Arc<App>) {
     let timed: bool = *TIMED.read().unwrap();
     // while time elapsed is less than 10 seconds
     log!("Evaluation engine started");

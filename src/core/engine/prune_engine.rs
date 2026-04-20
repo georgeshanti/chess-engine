@@ -1,8 +1,8 @@
-use std::{sync::mpsc::{self, Receiver, Sender}, thread::sleep, time::Duration};
+use std::{sync::{Arc, mpsc::{self, Receiver, Sender}}, thread::sleep, time::Duration};
 
 use crate::{App, core::{chess::board::{Board, BoardArrangement, can_come_after_board_arrangement}, draw::FixedLengthString, engine::reevaluation_engine::move_board_arrangement, structs::map::Positions}, log};
 
-pub fn prune_engine(app: App, receiver: Receiver<Board>, sender: Sender<()>) {
+pub fn prune_engine(app: Arc<App>, receiver: Receiver<Board>, sender: Sender<()>) {
 
     let mut handles = vec![];
     let mut wakers: Vec<(Sender<Board>, Receiver<()>)> = vec![];

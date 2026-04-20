@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, sync::{RwLock, mpsc::{self, Receiver, Sender}}, thread::sleep, time::{Duration, Instant}};
+use std::{cmp::Ordering, sync::{Arc, RwLock, mpsc::{self, Receiver, Sender}}, thread::sleep, time::{Duration, Instant}};
 
 use crate::{core::{app::App, chess::{board::{Board, BoardArrangement}, board_state::{Evaluation, NextBestMove}}, draw::FixedLengthString, engine::structs::{PositionToReevaluate, PositionsToReevaluate}, structs::map::{GroupedPositions, Positions}}, log};
 use std::sync::LazyLock;
@@ -6,7 +6,7 @@ use std::sync::LazyLock;
 pub static move_board: LazyLock<RwLock<Board>> = LazyLock::new(|| RwLock::new(Board::new()));
 pub static move_board_arrangement: LazyLock<RwLock<BoardArrangement>> = LazyLock::new(|| RwLock::new(BoardArrangement::new()));
 
-pub fn reevaluation_engine(app: App, receiver: Receiver<()>, sender: Sender<()>) {
+pub fn reevaluation_engine(app: Arc<App>, receiver: Receiver<()>, sender: Sender<()>) {
     let mut handles = vec![];
     let mut wakers: Vec<(Sender<()>, Receiver<()>)> = vec![];
     let app= app.clone();
