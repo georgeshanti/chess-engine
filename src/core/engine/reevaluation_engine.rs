@@ -11,12 +11,12 @@ pub fn reevaluation_engine(app: Arc<App>, receiver: Receiver<()>, sender: Sender
     let mut wakers: Vec<(Sender<()>, Receiver<()>)> = vec![];
     let app= app.clone();
     for i in 0..app.computer_count {
-        let positions_to_reevaluate = app.positions_to_reevaluate.clone();
+        let app = app.clone();
         let positions = app.positions.clone();
         let (self_tx, self_rx) = mpsc::channel();
         let (thread_tx, thread_rx) = mpsc::channel();
         handles.push(std::thread::Builder::new().name(format!("reevaluation_engine_{}", i)).spawn(move || {
-            reevaluation_thread(positions_to_reevaluate, positions, i, thread_rx, self_tx);
+            reevaluation_thread(app.clone(), positions, i, thread_rx, self_tx);
         }));
         wakers.push((thread_tx, self_rx));
     }
@@ -37,13 +37,13 @@ pub fn reevaluation_engine(app: Arc<App>, receiver: Receiver<()>, sender: Sender
     }
 }
 
-pub fn reevaluation_thread(positions_to_reevaluate: PositionsToReevaluate, positions: GroupedPositions, index: usize, receiver: Receiver<()>, sender: Sender<()>) {
+pub fn reevaluation_thread(app: Arc<App>, positions: GroupedPositions, index: usize, receiver: Receiver<()>, sender: Sender<()>) {
     loop {
         let _ = receiver.recv().unwrap();
         loop {
             let now = Instant::now();
             let mut output: [PositionToReevaluate; 20] = [PositionToReevaluate{value: (Board::new(), (Board::new(), (Evaluation::new(), now)))}; 20];
-            let len = positions_to_reevaluate.dequeue_optional(index, &mut output);
+            let len = app.positions_to_reevaluate.dequeue_optional(index, &mut output);
 
             if len == 0 {
                 break;
@@ -109,7 +109,7 @@ pub fn reevaluation_thread(positions_to_reevaluate: PositionsToReevaluate, posit
                                 let queue: Vec<PositionToReevaluate> = board_state.previous_moves.read().unwrap().iter().map(|previous_board| {
                                     PositionToReevaluate{value:(*previous_board, (board_to_reevaluate, (best_move.evaluation, Instant::now())))}
                                 }).collect();
-                                positions_to_reevaluate.queue(queue);
+                                app.positions_to_reevaluate.queue(queue);
                             }
                         }
                     }

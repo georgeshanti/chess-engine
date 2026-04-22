@@ -12,7 +12,7 @@ pub struct CustomAlloc<T: GlobalAlloc> {
     pub allocator: T
 }
 
-const LOG_MEMORY: bool = true;
+const LOG_MEMORY: bool = false;
 
 unsafe impl<T: GlobalAlloc> GlobalAlloc for CustomAlloc<T> {
     unsafe fn alloc(&self, layout: std::alloc::Layout) -> *mut u8 {

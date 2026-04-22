@@ -5,7 +5,7 @@ use crate::{core::structs::{cash::Cash, lock::LockWaiter, queue::Queue, threaded
 #[derive(Clone)]
 pub struct WeightedQueue<T, const N: usize> {
     pub thread_count: usize,
-    pub queues: Arc<RwLock<BTreeMap<usize, Queue<T, N>>>>,
+    pub queues: Arc<RwLock<BTreeMap<usize, Arc<Queue<T, N>>>>>,
     waiter: LockWaiter,
     max: Arc<RwLock<usize>>,
 }
@@ -30,7 +30,7 @@ impl<T: Copy, const N: usize> WeightedQueue<T, N> {
                 None => {
                     drop(readable_queues);
                     let mut writable_queues = self.queues.write().unwrap();
-                    let queue = Queue::new();
+                    let queue = Arc::new(Queue::new());
                     writable_queues.insert(weight, queue.clone());
                     self.waiter.notify();
                     queue

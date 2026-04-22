@@ -14,7 +14,7 @@ pub fn evaluation_engine(index: usize, app: Arc<App>) {
     let start_time = std::time::Instant::now();
     let positions_to_evaluate = app.positions_to_evaluate.clone();
     let positions = app.positions.clone();
-    let positions_to_reevaluate = app.positions_to_reevaluate.clone();
+    let positions_to_reevaluate = &app.positions_to_reevaluate;
     loop {
         // sleep(Duration::from_millis(500));
         if timed {

@@ -1,7 +1,7 @@
 use std::{io::{BufWriter, Stdout, Write, stdout}, rc::Rc};
 
 use array_builder::ArrayBuilder;
-use crossterm::{Command, QueueableCommand, cursor::MoveTo, event::Event, terminal::size};
+use crossterm::{Command, QueueableCommand, cursor::MoveTo, event::{Event, KeyCode, KeyEvent}, terminal::size};
 use nobcd::BcdNumber;
 
 use crate::{core::log, log};
@@ -180,7 +180,16 @@ impl Input {
     }
 
     pub fn handle_event(&mut self, event: &Event) {
-        panic!();
+        match event {
+            Event::Key(key_event) => {
+                if key_event.code == KeyCode::Backspace {
+                    self.value.pop();
+                } else {
+                    self.value.push(key_event.code.as_char().unwrap() as u8);
+                }
+            },
+            _ => {}
+        };
     }
 
     pub fn reset(&mut self) {
