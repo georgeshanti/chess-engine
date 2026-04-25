@@ -34,9 +34,6 @@ pub fn evaluation_engine(index: usize, app: Arc<App>) {
         }
         // println!("Evaluation engine running");
         // let position = positions_to_evaluate.dequeue(index);
-        let max_depth = {
-            *app.current_depth.read().unwrap()
-        };
         let mut value = [Board::new(); 323];
         let (board_depth, previous_board, len) = {
             let mut c = 0;

@@ -1,6 +1,25 @@
-use std::{array, cmp, collections::{BTreeSet, HashSet}, fmt::Display, sync::{Arc, Condvar, Mutex, MutexGuard, RwLock, RwLockWriteGuard}};
+use std::{array, cmp, collections::{BTreeSet, HashSet}, fmt::Display, sync::{Arc, Condvar, LockResult, Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard}};
 
 use crate::{core::{chess::board::Board, structs::{cash::Cash, concurrent_array_builder::ConcurrentQueuePage}}, log};
+
+#[repr(align(64))]
+struct CacheLinePaddedRwLock<T> {
+    lock: RwLock<T>
+}
+
+impl<T> CacheLinePaddedRwLock<T> {
+    pub fn new(t: T) -> Self {
+        CacheLinePaddedRwLock { lock: RwLock::new(t) }
+    }
+
+    pub fn write<'a>(&'a self) -> LockResult<RwLockWriteGuard<'a, T>> {
+        self.lock.write()
+    }
+
+    pub fn read<'a>(&'a self) -> LockResult<RwLockReadGuard<'a, T>> {
+        self.lock.read()
+    }
+}
 
 pub struct EvalQueuePage<const N: usize> {
     pub array: ConcurrentQueuePage<Board, N>,
@@ -18,22 +37,22 @@ impl<const N: usize> EvalQueuePage<N> {
 }
 
 pub struct EvalQueue<const N: usize> {
-    pub head: RwLock<Option<(Arc<EvalQueuePage<N>>, usize)>>,
-    pub tail: RwLock<Option<(Arc<EvalQueuePage<N>>, usize)>>,
+    pub head: CacheLinePaddedRwLock<Option<(Arc<EvalQueuePage<N>>, usize)>>,
+    pub tail: CacheLinePaddedRwLock<Option<(Arc<EvalQueuePage<N>>, usize)>>,
 
     waiter: Arc<Condvar>,
     pub length: Arc<RwLock<usize>>,
 }
 
-pub fn tail_pointer_get<'a, T>(m: &'a RwLock<T>) -> RwLockWriteGuard<'a, T> {
+pub fn tail_pointer_get<'a, T>(m: &'a CacheLinePaddedRwLock<T>) -> RwLockWriteGuard<'a, T> {
     m.write().unwrap()
-} 
+}
 
 impl<const N: usize> EvalQueue<N> {
     pub fn new() -> Self {
         let q = EvalQueue {
-            head: RwLock::new(None),
-            tail: RwLock::new(None),
+            head: CacheLinePaddedRwLock::new(None),
+            tail: CacheLinePaddedRwLock::new(None),
 
             waiter: Arc::new(Condvar::new()),
             length: Arc::new(RwLock::new(0)),

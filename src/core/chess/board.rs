@@ -9,6 +9,7 @@ use crate::core::chess::board_state::*;
 use crate::core::structs::cash::Cash;
 use crate::log;
 use array_builder::ArrayBuilder;
+use loop_code::repeat;
 use serde::{Serialize, Deserialize};
 use serde_big_array::BigArray;
 
@@ -306,33 +307,38 @@ impl Board {
     //     black_major: &mut [u8; 6],
     // )
 
+    pub fn derive_pieces(presence_board: Board, type_board: Board, color_board: Board, white_pawns: &mut u64, white_major: &mut [u8; 6], black_pawns: &mut u64, black_major: &mut [u8; 6]) {
+        repeat!(INDEX 64 {
+            if presence_board.pieces[INDEX] != EMPTY {
+                let piece_type = type_board.pieces[INDEX];
+                const black: u64 = 1 << (63 - INDEX);
+                const white: u64 = 1 << INDEX;
+                if piece_type == PAWN {
+                    if color_board.pieces[INDEX] == WHITE {
+                        *white_pawns = *white_pawns | white;
+                    } else {
+                        *black_pawns = *black_pawns | black;
+                    }
+                }
+                let index = (piece_type >> 3) - 1;
+                if color_board.pieces[INDEX] == WHITE {
+                    white_major[index as usize] = white_major[index as usize] + 1;
+                } else {
+                    black_major[index as usize] = black_major[index as usize] + 1;
+                }
+            }
+        });
+    }
+
     pub fn get_board_arrangement(self: &Self) -> BoardArrangement {
         let mut white_pawns: u64 = 0;
         let mut white_major: [u8; 6] = [0; 6];
         let mut black_pawns: u64 = 0;
         let mut black_major: [u8; 6] = [0; 6];
         let type_board = Board {pieces: and_byte(self.pieces, TYPE_BITS)};
-        for i in 0..64 {
-            let piece = self.pieces[i];
-            if get_presence(piece) == EMPTY {
-                continue;
-            } else {
-                let piece_type = type_board.pieces[i];
-                if piece_type == PAWN {
-                    if get_color(piece) == WHITE {
-                        white_pawns = white_pawns | (1 << i);
-                    } else {
-                        black_pawns = black_pawns | (1 << 63-i);
-                    }
-                }
-                let index = (piece_type >> 3) - 1;
-                if get_color(piece) == WHITE {
-                    white_major[index as usize] = white_major[index as usize] + 1;
-                } else {
-                    black_major[index as usize] = black_major[index as usize] + 1;
-                }
-            }
-        }
+        let presence_board = Board {pieces: and_byte(self.pieces, PRESENCE_BITS)};
+        let color_board = Board {pieces: and_byte(self.pieces, COLOR_BITS)};
+        Board::derive_pieces(presence_board, type_board, color_board, &mut white_pawns, &mut white_major, &mut black_pawns, &mut black_major);
         return match white_pawns.cmp(&black_pawns) {
             std::cmp::Ordering::Greater => BoardArrangement {
                 higher: PieceArrangement {

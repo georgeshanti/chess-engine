@@ -19,6 +19,7 @@ serde_json = "1.0"
 serde-big-array = "0.5.1"
 array_builder = "0.1.4"
 nobcd = "0.2.0"
+loop-code = "0.5.2"
 
 [profile.release]
 panic = 'abort'

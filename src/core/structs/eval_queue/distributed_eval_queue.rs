@@ -1,4 +1,6 @@
-use std::{collections::BTreeMap, fmt::Display, sync::{Arc, Condvar, Mutex, RwLock}};
+use std::{collections::BTreeMap, fmt::Display, ops::Deref, sync::{Arc, Condvar, Mutex, RwLock}};
+
+use array_builder::ArrayBuilder;
 
 use crate::{core::{chess::board::Board, structs::{cash::Cash, eval_queue::eval_queue::EvalQueue, lock::LockWaiter}}, log};
 
@@ -20,7 +22,7 @@ impl<const N: usize> WeightedEvalQueue<N> {
         }
     }
 
-    pub fn queue(&self, parent: Board, value: Vec<Board>, weight: usize) {
+    pub fn queue(&self, parent: Board, value: &[Board], weight: usize) {
         let queues = {
             let readable_queues = self.queues.read().unwrap();
             match readable_queues.get(&weight) {
@@ -103,30 +105,22 @@ impl<const N: usize> DistributedWeightedEvalQueue<N> {
     }
 
     pub fn queue(&self, weight: usize, parent: Board, value: &[Board]) {
-        let mut size_vectors: Vec<usize> = Vec::with_capacity(self.size);
-        let mut index_vectors: Vec<usize> = Vec::with_capacity(value.len());
-        for _ in 0..self.size {
-            size_vectors.push(0);
-        }
+        let mut thread_indices: ArrayBuilder<usize, 323> = ArrayBuilder::new();
         for val in value.iter() {
             let index = (val.cash() % self.size as u64) as usize;
-            size_vectors[index] += 1;
-            index_vectors.push(index);
+            thread_indices.push(index);
         }
-        let mut vectors: Vec<Vec<Board>> = Vec::with_capacity(self.size);
-        for i in 0..self.size {
-            vectors.push(Vec::with_capacity(size_vectors[i]));
-        }
-        for vector_index in 0..value.len() {
-            let index = index_vectors[vector_index];
-            vectors[index].push(value[vector_index].clone());
-        }
-        for i in 0..self.size {
-            let vector = vectors.pop().unwrap();
+        for thread_index in 0..self.size {
+            let mut vector = ArrayBuilder::<Board, 323>::new();
+            for i in 0..value.len() {
+                if thread_indices[i] == thread_index {
+                    vector.push(value[i]);
+                }
+            }
             if vector.is_empty() {
                 continue;
             }
-            self.queues[self.size-1-i].queue(parent, vector, weight);
+            self.queues[thread_index].queue(parent, vector.deref(), weight);
         }
         // let current_node = {
         //     let mut current_node = self.current_node.lock().unwrap();
