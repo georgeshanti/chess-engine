@@ -7,7 +7,7 @@ use regex::Regex;
 use thousands::Separable;
 use tui_input::{backend::crossterm::EventHandler};
 
-use crate::{core::{chess::{board::Board, initial_board::INITIAL_BOARD, piece::{BLACK, EMPTY, get_color, get_presence}}, draw::{Alignment, Block, Borders, Constraint, Direction, FixedLengthString, Frame, Input, Layout, Margin, RawU16Buffer, Rect, convert_usize_to_u8_string}, engine::{evaluation_engine::evaluation_engine, prune_engine::prune_engine, reevaluation_engine::reevaluation_engine, structs::{PositionToEvaluate, PositionsToEvaluate, PositionsToReevaluate}}, structs::{lock::LockWaiter, map::{GroupedPositions, Positions}, queue::DistributedQueue, weighted_queue::DistributedWeightedQueue}}, log};
+use crate::{core::{chess::{board::Board, initial_board::INITIAL_BOARD, piece::{BLACK, EMPTY, get_color, get_presence}}, draw::{Alignment, Block, Borders, Constraint, Direction, FixedLengthString, Frame, Input, Layout, Margin, RawU16Buffer, Rect, convert_usize_to_u8_string}, engine::{evaluation_engine::evaluation_engine, prune_engine::prune_engine, reevaluation_engine::reevaluation_engine, structs::{PositionToEvaluate, PositionsToEvaluate, PositionsToReevaluate}}, structs::{eval_queue::distributed_eval_queue::DistributedWeightedEvalQueue, lock::LockWaiter, map::{GroupedPositions, Positions}, queue::DistributedQueue, weighted_queue::DistributedWeightedQueue}}, log};
 
 use serde_json;
 
@@ -39,7 +39,7 @@ impl App {
         let mut prompt = FixedLengthString::new (&[b'E', b'n', b't', b'e', b'r', b' ', b'm', b'o', b'v', b'e', b':']);
         let mut app = App {
             positions: GroupedPositions::new(computer_count),
-            positions_to_evaluate: DistributedWeightedQueue::new(computer_count, depth.clone(), waiter.clone()),
+            positions_to_evaluate: DistributedWeightedEvalQueue::new(computer_count, depth.clone(), waiter.clone()),
             positions_to_reevaluate: DistributedQueue::new(computer_count),
             run_lock:  RwLock::new(()),
             current_board: RwLock::new(INITIAL_BOARD),
@@ -466,9 +466,7 @@ fn process_prompt(app: Arc<App>, prune_sender: &Sender<Board>, loop_prune_receiv
 
 fn run_engine(app: Arc<App>, thread_count: usize) {
     log!("Running engine");
-    let mut ba: ArrayBuilder<PositionToEvaluate, 1> = ArrayBuilder::new();
-    ba.push(PositionToEvaluate{ value: (None, INITIAL_BOARD) });
-    app.positions_to_evaluate.queue(0, ba.iter().as_slice());
+    app.positions_to_evaluate.queue(0, Board::new(), &[INITIAL_BOARD]);
     log!("queued");
     let mut threads: Vec<JoinHandle<()>> = Vec::new();
     log!("Starting {} threads", thread_count);

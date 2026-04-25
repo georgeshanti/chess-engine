@@ -1,8 +1,8 @@
 use std::{fmt::{Debug, Display}, time::Instant};
 
-use crate::core::{chess::{board::Board, board_state::Evaluation}, structs::{cash::Cash, queue::DistributedQueue, weighted_queue::DistributedWeightedQueue}};
+use crate::core::{chess::{board::Board, board_state::Evaluation}, structs::{cash::Cash, eval_queue::distributed_eval_queue::DistributedWeightedEvalQueue, queue::DistributedQueue, weighted_queue::DistributedWeightedQueue}};
 
-pub type PositionsToEvaluate = DistributedWeightedQueue<PositionToEvaluate, 1024>;
+pub type PositionsToEvaluate = DistributedWeightedEvalQueue<1024>;
 pub type TimestampedEvaluation = (Evaluation, std::time::Instant);
 pub type PositionsToReevaluate = DistributedQueue<PositionToReevaluate, 1024>;
 

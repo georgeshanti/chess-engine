@@ -6,3 +6,4 @@ pub mod cash;
 pub mod threaded_queue;
 pub mod lock;
 pub mod concurrent_array_builder;
+pub mod eval_queue;

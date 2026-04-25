@@ -37,8 +37,8 @@ pub fn evaluation_engine(index: usize, app: Arc<App>) {
         let max_depth = {
             *app.current_depth.read().unwrap()
         };
-        let mut value = [PositionToEvaluate{value: (None, Board::new())}; 20];
-        let (board_depth, len) = {
+        let mut value = [Board::new(); 323];
+        let (board_depth, previous_board, len) = {
             let mut c = 0;
             let res = loop {
                 if c > 10 {
@@ -69,11 +69,10 @@ pub fn evaluation_engine(index: usize, app: Arc<App>) {
         }.get_board_arrangement();
         let positions_to_evaluate_list = &value[0..len];
         let mut skippable_set: HashSet<Board> = HashSet::new();
-        for position in positions_to_evaluate_list {
+        for board in positions_to_evaluate_list {
             // log!("position got:\n{}", position.value.1);
             // return;
-            let (previous_board, board) = position.value;
-            if let Some(previous_board) = previous_board {
+            if Board::new() != previous_board {
                 if skippable_set.contains(&previous_board) {
                     continue;
                 }
@@ -111,34 +110,31 @@ pub fn evaluation_engine(index: usize, app: Arc<App>) {
                     let mut writable_board_state = readable_board_arrangement_positions.get(value.index).write().unwrap();
                     writable_board_state.self_evaluation = evaluated_board_state.0;
                     writable_board_state.next_moves = next_moves;
-                    match previous_board {
-                        Some(previous_board) => {
-                            {
-                                writable_board_state.previous_moves.write().unwrap().insert(previous_board);
-                            }
-                            {
-                                positions_to_reevaluate.queue(vec!(PositionToReevaluate{value: (previous_board, (board, (evaluated_board_state.0, Instant::now())))}));
-                            }
-                        },
-                        _ => {}
-                    };
+                    if previous_board != Board::new() {
+                        {
+                            writable_board_state.previous_moves.write().unwrap().insert(previous_board);
+                        }
+                        {
+                            positions_to_reevaluate.queue(vec!(PositionToReevaluate{value: (previous_board, (*board, (evaluated_board_state.0, Instant::now())))}));
+                        }
+                    }
                     drop(writable_board_state);
 
                     let next_moves = evaluated_board_state.1.iter();
-                    let mut ba_to_send: ArrayBuilder<PositionToEvaluate, 40> = ArrayBuilder::new();
+                    let mut ba_to_send: ArrayBuilder<Board, 40> = ArrayBuilder::new();
                     for next_move in next_moves {
-                        ba_to_send.push(PositionToEvaluate{ value: (Some(board), *next_move) });
+                        ba_to_send.push(*next_move);
                         if ba_to_send.len()==40 {
-                            app.positions_to_evaluate.queue(board_depth+1, ba_to_send.iter().as_slice());
+                            app.positions_to_evaluate.queue(board_depth+1, *board, ba_to_send.iter().as_slice());
                             ba_to_send = ArrayBuilder::new();
                         }
                     }
                     if ba_to_send.len() > 0 {
-                        app.positions_to_evaluate.queue(board_depth+1, ba_to_send.iter().as_slice());
+                        app.positions_to_evaluate.queue(board_depth+1, *board, ba_to_send.iter().as_slice());
                     }
                 },
                 Presence::Present { value } => {
-                    if let Some(previous_board) = previous_board {
+                    if previous_board != Board::new() {
                         let board_arrangement_positions = value.ptr.upgrade().unwrap();
                         let readable_board_arrangement_positions = board_arrangement_positions.read().unwrap();
                         let readable_board_state = readable_board_arrangement_positions.get(value.index).read().unwrap();
@@ -152,7 +148,7 @@ pub fn evaluation_engine(index: usize, app: Arc<App>) {
                                     next_best_move.evaluation
                                 }
                             };
-                            positions_to_reevaluate.queue(vec!(PositionToReevaluate{value: (previous_board, (board, (eval, Instant::now())))}));
+                            positions_to_reevaluate.queue(vec!(PositionToReevaluate{value: (previous_board, (*board, (eval, Instant::now())))}));
                         }
                     }
                 },

@@ -10,7 +10,7 @@ use std::{alloc::System, collections::BTreeMap, io::{Write, stdout}, ops::Deref,
 
 use crossterm::{ExecutableCommand, QueueableCommand, terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode}};
 
-use crate::core::{app::{App, run}, chess::{board::{Board, BoardArrangement}, board_state::BoardState, initial_board::INITIAL_BOARD, piece::char}, draw::{Block, Borders, Constraint, Direction, Frame, Layout, Margin, convert_usize_to_u8_string}, log::{FILENAME, LAST_LOG_FILENAME}, mem::alloc::{CustomAlloc, convert_to_hex, wait}, structs::queue::Queue};
+use crate::core::{app::{App, run}, chess::{board::{Board, BoardArrangement}, board_state::BoardState, initial_board::INITIAL_BOARD, piece::char}, draw::{Block, Borders, Constraint, Direction, Frame, Layout, Margin, convert_usize_to_u8_string}, engine::structs::PositionToEvaluate, log::{FILENAME, LAST_LOG_FILENAME}, mem::alloc::{CustomAlloc, convert_to_hex, wait}, structs::{concurrent_array_builder::ConcurrentQueuePage, queue::Queue}};
 
 // fn draw(frame: &mut Frame) {
 //     frame.render_widget(, frame.area());

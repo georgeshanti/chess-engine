@@ -196,7 +196,7 @@ impl<T, const N: usize> ConcurrentQueuePage<T, N> {
         // log!("source: {}", *self.as_ptr().add(from));
     }
 
-    pub unsafe fn read<const O: usize>(&self, destination: &mut [T; O], from: usize, to: usize) {
+    pub unsafe fn read(&self, destination: &mut [T], from: usize, to: usize) {
         assert!(from<=to);
         if from >= N {
             // log!("Going to fail: {}", from);
